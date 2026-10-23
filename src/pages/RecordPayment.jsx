@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
+import { describeError } from '../api';
 import SaveSuccess from '../components/SaveSuccess';
 import { t } from '../strings';
 
@@ -18,6 +19,8 @@ export default function RecordPayment() {
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState(''); // optional
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -33,7 +36,7 @@ export default function RecordPayment() {
   const amt = Number(amount);
   const overpay = selected && amt > selected.owed;
 
-  const handleSubmit = e => {
+  const handleSubmit = async e => {
     e.preventDefault();
     const found = {};
     if (!farmerId) found.farmerId = t.errFarmer;
@@ -41,8 +44,16 @@ export default function RecordPayment() {
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
-    addPayment({ farmerId: Number(farmerId), amount: amt, mode: mode || null });
-    setSaved(true);
+    setSubmitError('');
+    setSaving(true);
+    try {
+      await addPayment({ farmerId: Number(farmerId), amount: amt, mode: mode || null });
+      setSaved(true);
+    } catch (err) {
+      setSubmitError(describeError(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (saved) {
@@ -98,8 +109,10 @@ export default function RecordPayment() {
         </select>
       </div>
 
+      {submitError && <div className="form-error" role="alert">{submitError}</div>}
+
       <div className="form-actions">
-        <button type="submit">{t.save}</button>
+        <button type="submit" disabled={saving}>{saving ? t.saving : t.save}</button>
         <Link to="/farmers">{t.cancel}</Link>
       </div>
     </form>

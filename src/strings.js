@@ -57,4 +57,7 @@ export const t = {
   errRate: 'Enter a rate greater than 0',
   errAmount: 'Enter an amount greater than 0',
   warnOverpay: 'This is more than the amount owed to this farmer',
+  sessionExpired: 'Your session expired. Please sign in again.',
+  errNotAllowed: 'You are not allowed to do this action.',
+  errGeneric: 'Something went wrong. Please try again.',
 };

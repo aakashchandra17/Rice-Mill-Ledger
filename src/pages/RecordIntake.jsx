@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
+import { describeError } from '../api';
 import SaveSuccess from '../components/SaveSuccess';
 import { t } from '../strings';
 
@@ -22,6 +23,8 @@ export default function RecordIntake() {
   const [quantity, setQuantity] = useState('');
   const [rate, setRate] = useState('');
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -37,7 +40,7 @@ export default function RecordIntake() {
   const rt = Number(rate);
   const total = qty > 0 && rt > 0 ? Math.round(qty * rt * 100) / 100 : 0;
 
-  const handleSubmit = e => {
+  const handleSubmit = async e => {
     e.preventDefault();
     const found = {};
     if (!farmerId) found.farmerId = t.errFarmer;
@@ -47,8 +50,16 @@ export default function RecordIntake() {
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
-    addIntake({ farmerId: Number(farmerId), variety: variety.trim(), quantity: qty, rate: rt });
-    setSaved(true);
+    setSubmitError('');
+    setSaving(true);
+    try {
+      await addIntake({ farmerId: Number(farmerId), variety: variety.trim(), quantity: qty, rate: rt });
+      setSaved(true);
+    } catch (err) {
+      setSubmitError(describeError(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (saved) {
@@ -124,8 +135,10 @@ export default function RecordIntake() {
         <strong>{rupees(total)}</strong>
       </div>
 
+      {submitError && <div className="form-error" role="alert">{submitError}</div>}
+
       <div className="form-actions">
-        <button type="submit">{t.save}</button>
+        <button type="submit" disabled={saving}>{saving ? t.saving : t.save}</button>
         <Link to="/farmers">{t.cancel}</Link>
       </div>
     </form>

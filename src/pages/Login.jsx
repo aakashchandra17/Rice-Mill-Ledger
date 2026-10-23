@@ -7,7 +7,7 @@ export default function Login() {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, sessionExpired } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async e => {
@@ -33,6 +33,10 @@ export default function Login() {
       <form className="login-card" onSubmit={handleSubmit}>
         <div className="login-brand">{t.loginTitle}</div>
         <p className="login-sub">{t.loginSub}</p>
+
+        {sessionExpired && (
+          <div className="login-notice" role="alert">{t.sessionExpired}</div>
+        )}
 
         <label htmlFor="phone">{t.phoneLabel}</label>
         <input
