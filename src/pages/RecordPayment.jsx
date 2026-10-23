@@ -22,7 +22,10 @@ export default function RecordPayment() {
 
   useEffect(() => {
     if (!saved) return;
-    const id = setTimeout(() => navigate(`/farmers/${farmerId}`), 1400);
+    const id = setTimeout(
+      () => navigate(`/farmers/${farmerId}`, { state: { flash: true } }),
+      1400
+    );
     return () => clearTimeout(id);
   }, [saved, farmerId, navigate]);
 

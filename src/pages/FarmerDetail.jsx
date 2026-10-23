@@ -1,12 +1,17 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useData } from '../context/DataContext';
 import { t } from '../strings';
 
 const rupees = n => '₹' + n.toLocaleString('en-IN');
 
 export default function FarmerDetail() {
-  const { id } = useParams();
   const { farmers, transactions } = useData();
+  const { id } = useParams();
+  const location = useLocation();
+  const reduce = useReducedMotion();
+  const flashLast = Boolean(location.state?.flash) && !reduce;
+
   const farmer = farmers.find(f => f.id === Number(id));
 
   if (!farmer) {
@@ -60,17 +65,28 @@ export default function FarmerDetail() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
-                <tr key={r.id}>
-                  <td>{r.date}</td>
-                  <td style={{ color: r.type === 'intake' ? 'var(--green)' : 'var(--accent)' }}>
-                    {r.type === 'intake' ? t.intake : t.payment}
-                  </td>
-                  <td>{r.quantity ?? '-'}</td>
-                  <td>{rupees(r.amount)}</td>
-                  <td>{rupees(r.balance)}</td>
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                const isNew = flashLast && i === rows.length - 1;
+                return (
+                  <motion.tr
+                    key={r.id}
+                    layout={!reduce}
+                    {...(isNew && {
+                      initial: { backgroundColor: 'rgba(63, 174, 122, 0.4)' },
+                      animate: { backgroundColor: 'rgba(63, 174, 122, 0)' },
+                      transition: { duration: 0.4, delay: 0.5 },
+                    })}
+                  >
+                    <td>{r.date}</td>
+                    <td style={{ color: r.type === 'intake' ? 'var(--green)' : 'var(--accent)' }}>
+                      {r.type === 'intake' ? t.intake : t.payment}
+                    </td>
+                    <td>{r.quantity ?? '-'}</td>
+                    <td>{rupees(r.amount)}</td>
+                    <td>{rupees(r.balance)}</td>
+                  </motion.tr>
+                );
+              })}
             </tbody>
           </table>
         )}
