@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
-import { farmers } from '../mockData';
+import { useData } from '../context/DataContext';
 import { t } from '../strings';
 
 export default function Farmers() {
+  const { farmers } = useData();
+
   return (
     <div className="panel">
       <h1>{t.farmers}</h1>
@@ -28,8 +30,8 @@ export default function Farmers() {
                 <td>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <Link to={`/farmers/${f.id}`}>{t.view}</Link>
-                    <button disabled>{t.recordIntake}</button>
-                    <button disabled>{t.recordPayment}</button>
+                    <Link className="btn" to={`/intake?farmer=${f.id}`}>{t.recordIntake}</Link>
+                    <Link className="btn btn-ghost" to={`/payment?farmer=${f.id}`}>{t.recordPayment}</Link>
                   </div>
                 </td>
               </tr>

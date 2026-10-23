@@ -1,3 +1,5 @@
+import RecordIntake from './pages/RecordIntake';
+import RecordPayment from './pages/RecordPayment';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import ParticleBackground from './components/ParticleBackground';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -22,6 +24,8 @@ function App() {
             <span className="brand">Rice Mill Ledger</span>
             <NavLink to="/dashboard">Dashboard</NavLink>
             <NavLink to="/farmers">Farmers</NavLink>
+            <NavLink to="/intake">{t.recordIntake}</NavLink>
+            <NavLink to="/payment">{t.recordPayment}</NavLink>
             <button onClick={logout}>{t.logout}</button>
           </nav>
         )}
@@ -30,6 +34,8 @@ function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/farmers" element={<ProtectedRoute><Farmers /></ProtectedRoute>} />
           <Route path="/farmers/:id" element={<ProtectedRoute><FarmerDetail /></ProtectedRoute>} />
+          <Route path="/intake" element={<ProtectedRoute><RecordIntake /></ProtectedRoute>} />
+          <Route path="/payment" element={<ProtectedRoute><RecordPayment /></ProtectedRoute>} />
         </Routes>
       </div>
     </>

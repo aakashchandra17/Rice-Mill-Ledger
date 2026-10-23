@@ -1,11 +1,12 @@
 import { useParams, Link } from 'react-router-dom';
-import { farmers, transactions } from '../mockData';
+import { useData } from '../context/DataContext';
 import { t } from '../strings';
 
 const rupees = n => '₹' + n.toLocaleString('en-IN');
 
 export default function FarmerDetail() {
   const { id } = useParams();
+  const { farmers, transactions } = useData();
   const farmer = farmers.find(f => f.id === Number(id));
 
   if (!farmer) {

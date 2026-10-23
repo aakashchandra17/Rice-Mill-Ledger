@@ -1,10 +1,11 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { farmers, weekIntake } from '../mockData';
+import { useData } from '../context/DataContext';
 import { t } from '../strings';
 
 const rupees = n => '₹' + n.toLocaleString('en-IN');
 
 export default function Dashboard() {
+  const { farmers, weekIntake } = useData();
   const totalStock = farmers.reduce((sum, f) => sum + f.stock, 0);
   const totalOwed = farmers.reduce((sum, f) => sum + f.owed, 0);
   const todayIntake = weekIntake[weekIntake.length - 1];
