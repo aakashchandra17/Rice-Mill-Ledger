@@ -5,20 +5,22 @@ import { t } from '../strings';
 
 const rupees = n => '₹' + n.toLocaleString('en-IN');
 
-export default function FarmerDetail() {
+export default function FarmerDetail({ farmerId }) {
   const { farmers, transactions } = useData();
-  const { id } = useParams();
+  const params = useParams();
   const location = useLocation();
   const reduce = useReducedMotion();
   const flashLast = Boolean(location.state?.flash) && !reduce;
 
+  const id = farmerId ?? params.id;
   const farmer = farmers.find(f => f.id === Number(id));
+  const ownPage = farmerId !== undefined; // a farmer viewing their own ledger
 
   if (!farmer) {
     return (
       <div className="panel">
         <h1>{t.notFound}</h1>
-        <Link to="/farmers">{t.back}</Link>
+        {!ownPage && <Link to="/farmers">{t.back}</Link>}
       </div>
     );
   }
@@ -35,8 +37,8 @@ export default function FarmerDetail() {
 
   return (
     <div>
-      <Link to="/farmers">← {t.back}</Link>
-      <h1 style={{ marginTop: 12 }}>{farmer.name}</h1>
+      {!ownPage && <Link to="/farmers">← {t.back}</Link>}
+      <h1 style={{ marginTop: ownPage ? 0 : 12 }}>{farmer.name}</h1>
       <p style={{ color: 'var(--muted)', marginTop: -8 }}>{farmer.village}</p>
 
       <div className="stats">

@@ -16,6 +16,9 @@ export function DataProvider({ children }) {
 
   const today = () => new Date().toISOString().slice(0, 10);
 
+  const addFarmerRecord = ({ id, name, village }) =>
+    setFarmers(prev => [...prev, { id, name, village, stock: 0, owed: 0 }]);
+
   // the screen only updates after the API call succeeds
   const addIntake = async ({ farmerId, variety, quantity, rate }) => {
     const amount = Math.round(quantity * rate * 100) / 100;
@@ -43,7 +46,9 @@ export function DataProvider({ children }) {
   };
 
   return (
-    <DataContext.Provider value={{ farmers, transactions, weekIntake, addIntake, addPayment }}>
+    <DataContext.Provider
+      value={{ farmers, transactions, weekIntake, addIntake, addPayment, addFarmerRecord }}
+    >
       {children}
     </DataContext.Provider>
   );

@@ -134,3 +134,125 @@ select option { background: #10201a; color: var(--text); }
   background: rgba(224, 176, 74, 0.12); border: 1px solid var(--border);
   color: var(--accent); font-size: 0.9rem;
 }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.login-wrap { min-height: 100vh; padding: 24px 0; display: flex; align-items: center; justify-content: center; }
+
+.lcard {
+  --lc-primary: #1f7a4d;   /* change this one colour to restyle the whole card */
+  --lc-field: #e6f1ea;
+  width: min(560px, 100%);
+  border-radius: 28px;
+  overflow: hidden;
+  color: #17301f;
+  background: linear-gradient(180deg, #f4f6f4, #dfe5e0);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+
+.lcard-banner {
+  height: 170px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+  padding: 0 28px 22px;
+  background:
+    linear-gradient(100deg, rgba(8, 18, 13, 0.15) 0%, rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0.9) 100%),
+    url('/farmers.jpg') center 60% / cover no-repeat,
+    linear-gradient(135deg, #1b3a28, #0b1410);
+}
+.lcard-brand { font-weight: 800; line-height: 1.15; font-size: 1.05rem; max-width: 110px; text-align: right; }
+.lcard-logo {
+  width: 78px; height: 78px; border-radius: 50%; background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--lc-primary); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+
+.ltabs {
+  display: flex; margin-top: -26px; position: relative;
+  border-radius: 26px 26px 0 0; overflow: hidden;
+}
+.ltab {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 18px 8px; border: 0; border-radius: 0;
+  background: #e9ece9; color: #5c6b61;
+  font-size: 1rem; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+  border-bottom: 3px solid transparent;
+}
+.ltab[aria-selected='true'] { background: #fff; color: var(--lc-primary); border-bottom-color: var(--lc-primary); }
+
+.lbody { display: flex; flex-direction: column; gap: 16px; padding: 28px 32px 32px; }
+
+.lfield {
+  position: relative; background: var(--lc-field); border-radius: 14px;
+  padding: 10px 56px 10px 16px; border: 1.5px solid transparent; transition: border-color 0.2s;
+}
+.lfield:focus-within { border-color: var(--lc-primary); }
+.lfield.invalid { border-color: #d64545; }
+.lfield label { display: block; font-size: 0.78rem; color: #3b4d41; }
+.lfield input {
+  width: 100%; background: transparent; border: 0; border-radius: 0;
+  padding: 2px 0; font-size: 1.1rem; color: #102018; outline: none;
+}
+.lfield input::placeholder { color: #7a8c80; }
+.ficon {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  display: flex; color: var(--lc-primary);
+}
+.ficon-btn { background: transparent; border: 0; padding: 6px; border-radius: 8px; cursor: pointer; }
+
+.lerror { color: #c0392b; font-size: 0.85rem; margin-top: 6px; }
+.lerror-form { margin: 0; text-align: center; }
+.lnotice {
+  background: #fff7e0; border: 1px solid #e7cf8a; color: #6b5200;
+  padding: 10px 14px; border-radius: 12px; font-size: 0.9rem;
+}
+
+.llink {
+  align-self: center; background: transparent; border: 0; padding: 4px;
+  color: var(--lc-primary); font-weight: 700; text-decoration: underline; font-size: 0.95rem;
+}
+
+.lbtn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 16px; border-radius: 999px;
+  background: var(--lc-primary); color: #fff;
+  font-size: 1.05rem; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.lbtn:disabled { background: #8fb7a2; color: #fff; cursor: not-allowed; }
+
+.lor { display: flex; align-items: center; gap: 14px; color: #5c6b61; font-size: 0.9rem; }
+.lor::before, .lor::after { content: ''; flex: 1; height: 1px; background: #b9c4bc; }
+
+.lsignup {
+  width: 100%; padding: 15px; border-radius: 999px; border: 0;
+  background: #fff; color: #17301f; font-weight: 600; font-size: 1rem;
+}
+.lsignup strong { color: var(--lc-primary); }
+
+@media (max-width: 480px) {
+  .lcard-banner { height: 140px; padding: 0 18px 20px; }
+  .lcard-logo { width: 64px; height: 64px; }
+  .ltab { font-size: 0.8rem; gap: 6px; padding: 16px 4px; }
+  .lbody { padding: 22px 20px 26px; }
+}
+.nav-user { color: var(--muted); font-size: 0.85rem; }
+
+.page-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.page-head h1 { margin: 0; }
+.muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 16px; }
+
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 600; border: 1px solid var(--border);
+}
+.badge-admin { color: var(--accent); }
+.badge-agent { color: #9cd3b6; }
+.badge-farmer { color: #d4e0d7; }
+.badge-on { color: var(--green); }
+.badge-off { color: #ff9b8f; border-color: rgba(255, 155, 143, 0.5); }
+
+.btn-small { padding: 6px 10px; font-size: 0.8rem; }
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.inline-row { display: flex; gap: 8px; }
+.inline-row input { flex: 1; min-width: 0; }

@@ -1,79 +1,118 @@
-import { t } from './strings';
 
-const BASE_URL = 'https://your-backend.onrender.com/api'; // replace later with your teammate's URL
-export const USE_MOCK = true; // change to false when the backend is ready
+const BASE_URL = 'https://grain-ledger.onrender.com/api';
+
+export const USE_MOCK = false;
 
 export class ApiError extends Error {
   constructor(message, status) {
     super(message);
+    this.name = 'ApiError';
     this.status = status;
   }
 }
 
-// AuthContext registers this, so any 401 logs the user out
 let onUnauthorized = () => {};
+
 export const setUnauthorizedHandler = fn => {
   onUnauthorized = fn;
 };
 
-// Testing helper, development only (removed from production builds):
-// type simulateApiError(401) or simulateApiError(403) in the browser console
-let simulated = null;
-if (import.meta.env.DEV) {
-  window.simulateApiError = status => {
-    simulated = status;
-    console.log(`Next API call will fail with ${status}`);
-  };
+function parseJwt(token) {
+  try {
+    const payload = token.split('.')[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+
+    return JSON.parse(atob(payload));
+  } catch {
+    return {};
+  }
 }
 
-const delay = ms => new Promise(r => setTimeout(r, ms));
-
 async function request(path, { method = 'GET', body, token } = {}) {
-  if (USE_MOCK) {
-    await delay(300);
-    if (simulated) {
-      const status = simulated;
-      simulated = null;
-      if (status === 401) onUnauthorized();
-      throw new ApiError('Simulated error', status);
-    }
-    return body ?? {};
-  }
-
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   if (res.status === 401) {
     onUnauthorized();
-    throw new ApiError('Session expired', 401);
+    throw new ApiError('Session expired. Please log in again.', 401);
   }
-  if (res.status === 403) throw new ApiError('Not allowed', 403);
-  if (!res.ok) throw new ApiError('Request failed', res.status);
+
+  if (res.status === 403) {
+    throw new ApiError('You are not allowed to access this section.', 403);
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Request failed (${res.status}).`, res.status);
+  }
+
+  if (res.status === 204) return null;
+
   return res.json();
 }
 
+// Backend login accepts a phone number and returns access_token.
 export async function login(phone) {
-  if (USE_MOCK) {
-    await delay(400);
-    if (phone === '0000000000') throw new ApiError('Login failed', 401);
-    return 'mock-token';
-  }
-
   const res = await fetch(`${BASE_URL}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone }),
   });
-  if (!res.ok) throw new ApiError('Login failed', res.status);
+
+  if (res.status === 401) {
+    throw new ApiError('Phone number not recognized.', 401);
+  }
+
+  if (res.status === 403) {
+    throw new ApiError('Access denied.', 403);
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Login request failed (${res.status}).`, res.status);
+  }
+
   const data = await res.json();
-  return data.access_token;
+  const token = data.access_token;
+
+  if (!token) {
+    throw new ApiError('The backend did not return an access token.', 500);
+  }
+
+  const claims = parseJwt(token);
+
+  const user = {
+    id: claims.sub,
+    name: claims.name || '',
+    phone,
+    role: data.role || data.user?.role || claims.role,
+    businessId: data.business_id || claims.business_id,
+    partyId: data.party_id || claims.party_id,
+  };
+
+  if (!['owner', 'party'].includes(user.role)) {
+    throw new ApiError(
+      'Login succeeded, but the token did not contain a recognized role.',
+      500
+    );
+  }
+
+  return { token, user };
 }
+
+export const getFarmers = token =>
+  request('/farmers', { token });
+
+export const createFarmer = (data, token) =>
+  request('/farmers', { method: 'POST', body: data, token });
+
+export const getDashboard = token =>
+  request('/dashboard', { token });
 
 export const recordIntake = (data, token) =>
   request('/intake', { method: 'POST', body: data, token });
@@ -81,9 +120,61 @@ export const recordIntake = (data, token) =>
 export const recordPayment = (data, token) =>
   request('/payments', { method: 'POST', body: data, token });
 
-// turns an error into a message for the screen ('' means nothing to show)
+export const getExports = token =>
+  request('/exports', { token });
+
+export const recordExport = (data, token) =>
+  request('/exports', { method: 'POST', body: data, token });
+
+export const getProfit = token =>
+  request('/profit', { token });
+
+export const getMillLoans = token =>
+  request('/mill-loans', { token });
+
+export const createMillLoan = (data, token) =>
+  request('/mill-loans', { method: 'POST', body: data, token });
+
+export const repayMillLoan = (data, token) =>
+  request('/mill-loans/repay', { method: 'POST', body: data, token });
+
+export const getBrokerCommissions = token =>
+  request('/broker-commissions', { token });
+
+export const payBrokerCommission = (data, token) =>
+  request('/broker-commissions/pay', { method: 'POST', body: data, token });
+
+export const getCommissiondarDashboard = token =>
+  request('/commissiondar-dashboard', { token });
+
+export const getCommissiondarLoans = token =>
+  request('/commissiondar-loans', { token });
+
+export const createCommissiondarLoan = (data, token) =>
+  request('/commissiondar-loans', { method: 'POST', body: data, token });
+
+export const repayCommissiondarLoan = (data, token) =>
+  request('/commissiondar-loans/repay', { method: 'POST', body: data, token });
+
+export const getCommissiondarStock = token =>
+  request('/commissiondar-stock', { token });
+
+export const receiveCommissiondarStock = (data, token) =>
+  request('/commissiondar-stock/receive', {
+    method: 'POST',
+    body: data,
+    token,
+  });
+
+export const deliverCommissiondarStock = (data, token) =>
+  request('/commissiondar-stock/deliver', {
+    method: 'POST',
+    body: data,
+    token,
+  });
+
 export function describeError(err) {
-  if (err?.status === 401) return ''; // user is already sent to the login page
-  if (err?.status === 403) return t.errNotAllowed;
-  return t.errGeneric;
+  if (err?.status === 401) return 'Your session expired. Please log in again.';
+  if (err?.status === 403) return 'You are not allowed to access this section.';
+  return err?.message || 'Something went wrong. Please try again.';
 }
