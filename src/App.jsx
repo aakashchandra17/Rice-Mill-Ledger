@@ -13,6 +13,10 @@ import { useAuth } from './context/AuthContext';
 import { t } from './strings';
 
 import Login from './pages/Login';
+import Register from './pages/Register';
+import MillerRegister from './pages/MillerRegister';
+import CommissiondarRegister from './pages/CommissiondarRegister';
+
 import Dashboard from './pages/Dashboard';
 import Farmers from './pages/Farmers';
 import FarmerDetail from './pages/FarmerDetail';
@@ -23,91 +27,191 @@ import CommissiondarDashboard from './pages/CommissiondarDashboard';
 import CommissiondarLoans from './pages/CommissiondarLoans';
 import CommissiondarStock from './pages/CommissiondarStock';
 
-function MillerApp() {
+/* Miller and Commissiondar navigation */
+function TopNavigation({ commissiondhar = false }) {
   const { logout, user } = useAuth();
 
+  const links = commissiondhar
+    ? [
+        { to: '/commissiondar', label: 'Dashboard', end: true },
+        { to: '/commissiondar/loans', label: 'Farmer Loans' },
+        { to: '/commissiondar/stock', label: 'My Stock' },
+      ]
+    : [
+        { to: '/dashboard', label: t.dashboard },
+        { to: '/farmers', label: t.farmers },
+        { to: '/intake', label: t.recordIntake },
+        { to: '/payment', label: t.recordPayment },
+      ];
+
   return (
-    <>
-      <nav className="nav">
-        <span className="brand">Rice Mill Ledger</span>
-
-        <NavLink to="/dashboard">{t.dashboard}</NavLink>
-        <NavLink to="/farmers">{t.farmers}</NavLink>
-        <NavLink to="/intake">{t.recordIntake}</NavLink>
-        <NavLink to="/payment">{t.recordPayment}</NavLink>
-
-        <span className="nav-user">
-          {user?.name || 'Miller'}
+    <header className="top-navigation">
+      <NavLink
+        to={commissiondhar ? '/commissiondar' : '/dashboard'}
+        className="top-brand"
+        aria-label="GrainLedger home"
+      >
+        <span className="top-brand-mark"></span>
+        <span className="top-brand-copy">
+          <span className="top-brand-name">GRAIN LEDGER</span>
+          <span className="top-brand-subtitle">RICE MILL MANAGEMENT</span>
         </span>
+      </NavLink>
 
-        <button onClick={logout}>Logout</button>
+      <nav className="top-nav-links" aria-label="Main navigation">
+        {links.map(link => (
+          <NavLink
+            key={link.to}
+            to={link.to}
+            end={link.end || false}
+            className={({ isActive }) =>
+              `top-nav-link${isActive ? ' top-nav-link-active' : ''}`
+            }
+          >
+            {link.label}
+          </NavLink>
+        ))}
       </nav>
 
-      <Routes>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/farmers" element={<Farmers />} />
-        <Route path="/farmers/:id" element={<FarmerDetail />} />
-        <Route path="/intake" element={<RecordIntake />} />
-        <Route path="/payment" element={<RecordPayment />} />
+      <div className="top-nav-account">
+        <div className="top-account-details">
+          <span className="top-account-name">
+            {user?.name || (commissiondhar ? 'Commissiondhar' : 'Miller')}
+          </span>
+          <span className="top-account-role">
+            {commissiondhar ? 'Commissiondhar' : 'Miller'}
+          </span>
+        </div>
 
-        <Route
-          path="*"
-          element={<Navigate to="/dashboard" replace />}
-        />
-      </Routes>
-    </>
+        <button
+          type="button"
+          className="top-logout-button"
+          onClick={logout}
+        >
+          Logout
+        </button>
+      </div>
+    </header>
   );
 }
 
-function CommissiondarApp() {
+/* Admin navigation */
+function AdminNavigation() {
   const { logout, user } = useAuth();
 
   return (
-    <>
-      <nav className="nav">
-        <span className="brand">Commissiondhar Ledger</span>
+    <header className="top-navigation">
+      <NavLink
+        to="/admin"
+        className="top-brand"
+        aria-label="GrainLedger Admin home"
+      >
+        <span className="top-brand-mark"></span>
+        <span className="top-brand-copy">
+          <span className="top-brand-name">GRAIN LEDGER</span>
+          <span className="top-brand-subtitle">ADMINISTRATION</span>
+        </span>
+      </NavLink>
 
-        <NavLink to="/commissiondar" end>
+      <nav className="top-nav-links" aria-label="Admin navigation">
+        <NavLink
+          to="/admin"
+          end
+          className={({ isActive }) =>
+            `top-nav-link${isActive ? ' top-nav-link-active' : ''}`
+          }
+        >
           Dashboard
         </NavLink>
-
-        <NavLink to="/commissiondar/loans">
-          Farmer Loans
-        </NavLink>
-
-        <NavLink to="/commissiondar/stock">
-          My Stock
-        </NavLink>
-
-        <span className="nav-user">
-          {user?.name || 'Commissiondhar'}
-        </span>
-
-        <button onClick={logout}>Logout</button>
       </nav>
 
-      <Routes>
-        <Route
-          index
-          element={<CommissiondarDashboard />}
-        />
+      <div className="top-nav-account">
+        <div className="top-account-details">
+          <span className="top-account-name">
+            {user?.name || 'Administrator'}
+          </span>
+          <span className="top-account-role">Admin</span>
+        </div>
 
-        <Route
-          path="loans"
-          element={<CommissiondarLoans />}
-        />
+        <button
+          type="button"
+          className="top-logout-button"
+          onClick={logout}
+        >
+          Logout
+        </button>
+      </div>
+    </header>
+  );
+}
 
-        <Route
-          path="stock"
-          element={<CommissiondarStock />}
-        />
+/* Miller application */
+function MillerApp() {
+  return (
+    <div className="app-layout top-layout">
+      <TopNavigation />
 
-        <Route
-          path="*"
-          element={<Navigate to="/commissiondar" replace />}
-        />
-      </Routes>
-    </>
+      <main className="app-main">
+        <Routes>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/farmers" element={<Farmers />} />
+          <Route path="/farmers/:id" element={<FarmerDetail />} />
+          <Route path="/intake" element={<RecordIntake />} />
+          <Route path="/payment" element={<RecordPayment />} />
+
+          <Route
+            path="*"
+            element={<Navigate to="/dashboard" replace />}
+          />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+/* Commissiondar application */
+function CommissiondarApp() {
+  return (
+    <div className="app-layout top-layout">
+      <TopNavigation commissiondhar />
+
+      <main className="app-main">
+        <Routes>
+          <Route index element={<CommissiondarDashboard />} />
+          <Route path="loans" element={<CommissiondarLoans />} />
+          <Route path="stock" element={<CommissiondarStock />} />
+
+          <Route
+            path="*"
+            element={<Navigate to="/commissiondar" replace />}
+          />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+/* Admin application */
+function AdminApp() {
+  const { user } = useAuth();
+
+  return (
+    <div className="app-layout top-layout">
+      <AdminNavigation />
+
+      <main className="app-main">
+        <section style={{ padding: '30px' }}>
+          <h1>Grain Ledger Admin Dashboard</h1>
+          <p>
+            Welcome, {user?.name || 'Administrator'}.
+          </p>
+          <p>
+            Your administrator account is authenticated.
+            The admin management dashboard will be added next.
+          </p>
+        </section>
+      </main>
+    </div>
   );
 }
 
@@ -117,23 +221,49 @@ function App() {
 
   const isLogin = location.pathname === '/';
 
-  if (!isLogin && !user) {
+  const isPublicRegistration =
+    location.pathname === '/register' ||
+    location.pathname === '/register/miller' ||
+    location.pathname === '/register/commissiondar';
+
+  const isPublicPage = isLogin || isPublicRegistration;
+
+  if (!isPublicPage && !user) {
     return <Navigate to="/" replace />;
   }
 
   return (
     <>
-      {isLogin && <div className="login-bg" />}
-
-      <ParticleBackground />
+      {isPublicPage && <div className="login-bg" />}
+      {isPublicPage && <ParticleBackground />}
 
       <div className="app">
         <Routes>
+          <Route path="/" element={<Login />} />
+
+          <Route path="/register" element={<Register />} />
+
           <Route
-            path="/"
-            element={<Login />}
+            path="/register/miller"
+            element={<MillerRegister />}
           />
 
+          <Route
+            path="/register/commissiondar"
+            element={<CommissiondarRegister />}
+          />
+
+          {/* Admin routes */}
+          <Route
+            path="/admin/*"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <AdminApp />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Commissiondar routes */}
           <Route
             path="/commissiondar/*"
             element={
@@ -143,6 +273,7 @@ function App() {
             }
           />
 
+          {/* Miller routes */}
           <Route
             path="/*"
             element={

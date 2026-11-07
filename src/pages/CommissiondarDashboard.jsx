@@ -1,86 +1,198 @@
 
-import { useEffect, useState } from 'react';
-import { getCommissiondarDashboard, describeError } from '../api';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  getCommissiondarDashboard,
+  describeError,
+} from '../api';
 import { useAuth } from '../context/AuthContext';
+
+const rupees = value =>
+  '₹' + Number(value || 0).toLocaleString('en-IN');
 
 export default function CommissiondarDashboard() {
   const { token } = useAuth();
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadDashboard() {
-      try {
-        setLoading(true);
-        setError('');
-        const result = await getCommissiondarDashboard(token);
-        if (active) setData(result);
-      } catch (err) {
-        if (active) setError(describeError(err));
-      } finally {
-        if (active) setLoading(false);
-      }
+  const loadDashboard = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      setError('Please log in again to view your dashboard.');
+      return;
     }
 
-    if (token) loadDashboard();
+    try {
+      setLoading(true);
+      setError('');
 
-    return () => {
-      active = false;
-    };
+      const result = await getCommissiondarDashboard(token);
+      setData(result);
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
   const metrics = [
-    { label: 'Active Loans', value: data?.active_loans ?? 0 },
+    {
+      label: 'Active Loans',
+      value: Number(data?.active_loans ?? 0).toLocaleString('en-IN'),
+      icon: '📋',
+      description: 'Currently active loans',
+    },
     {
       label: 'Total Lent Out',
-      value: `₹${Number(data?.total_lent_out ?? 0).toLocaleString('en-IN')}`,
+      value: rupees(data?.total_lent_out),
+      icon: '💰',
+      description: 'Total amount given as loans',
     },
     {
       label: 'Total Outstanding',
-      value: `₹${Number(data?.total_outstanding ?? 0).toLocaleString('en-IN')}`,
+      value: rupees(data?.total_outstanding),
+      icon: '📊',
+      description: 'Amount yet to be recovered',
     },
     {
       label: 'Pending Commissions',
-      value: `₹${Number(data?.commissions_pending ?? 0).toLocaleString('en-IN')}`,
+      value: rupees(data?.commissions_pending),
+      icon: '⏳',
+      description: 'Commission amount pending',
     },
   ];
 
   return (
-    <div className="panel">
-      <h1>Commissiondhar Dashboard</h1>
-      <p>Overview of your loans, outstanding balances and commissions.</p>
+    <div className="commissiondar-dashboard-page">
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 22,
+        }}
+      >
+        <div>
+          <h1 style={{ marginBottom: 6 }}>
+            Commissiondhar Dashboard
+          </h1>
+          <p style={{ color: 'var(--muted)', margin: 0 }}>
+            Overview of your loans, outstanding balances and commissions.
+          </p>
+        </div>
 
-      {loading && <p>Loading dashboard...</p>}
-      {error && <p role="alert">{error}</p>}
+        <button
+          type="button"
+          onClick={loadDashboard}
+          disabled={loading}
+        >
+          {loading ? 'Refreshing...' : '↻ Refresh'}
+        </button>
+      </div>
+
+      {loading && (
+        <div className="panel" style={{ padding: 24 }}>
+          <p style={{ margin: 0 }}>Loading dashboard...</p>
+        </div>
+      )}
+
+      {error && (
+        <div
+          className="panel"
+          role="alert"
+          style={{ padding: 22 }}
+        >
+          <h3 style={{ marginTop: 0 }}>Unable to load dashboard</h3>
+          <p>{error}</p>
+          <button type="button" onClick={loadDashboard}>
+            Try Again
+          </button>
+        </div>
+      )}
 
       {!loading && !error && data && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-            gap: 16,
-            marginTop: 20,
-          }}
-        >
-          {metrics.map(metric => (
-            <div
-              key={metric.label}
-              style={{
-                border: '1px solid #dbe3ee',
-                borderRadius: 12,
-                padding: 18,
-              }}
-            >
-              <p style={{ margin: '0 0 10px', opacity: 0.75 }}>
-                {metric.label}
-              </p>
-              <h2 style={{ margin: 0 }}>{metric.value}</h2>
-            </div>
-          ))}
-        </div>
+        <>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+              gap: 16,
+            }}
+          >
+            {metrics.map((metric, index) => (
+              <div
+                className="panel"
+                key={metric.label}
+                style={{
+                  padding: 20,
+                  borderRadius: 14,
+                  minWidth: 0,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 18,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: 'var(--muted)',
+                      fontSize: 14,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {metric.label}
+                  </span>
+
+                  <span style={{ fontSize: 24 }}>
+                    {metric.icon}
+                  </span>
+                </div>
+
+                <h2
+                  style={{
+                    margin: '0 0 10px',
+                    fontSize: 25,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {metric.value}
+                </h2>
+
+                <p
+                  style={{
+                    color: 'var(--muted)',
+                    fontSize: 12,
+                    margin: 0,
+                  }}
+                >
+                  {metric.description}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="panel"
+            style={{ marginTop: 20, padding: 20 }}
+          >
+            <h3 style={{ marginTop: 0 }}>Dashboard Overview</h3>
+            <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
+              Your latest loan and commission figures are displayed above.
+              Use the navigation menu to access your other account sections.
+            </p>
+          </div>
+        </>
       )}
     </div>
   );
