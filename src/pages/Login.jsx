@@ -1,6 +1,6 @@
 
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { t } from '../strings';
@@ -8,7 +8,7 @@ import { t } from '../strings';
 const MSG91_WIDGET_ID = '366b67694f63393139353833';
 const MSG91_TOKEN_AUTH = '588079TBaMoxkCvOE6aeef278P1';
 
-// Show the response structure without exposing any actual values.
+// Mask all response values to protect tokens and credentials.
 function maskStructure(value, depth = 0) {
   if (value === null) return null;
 
@@ -40,7 +40,7 @@ function maskStructure(value, depth = 0) {
   return `<${typeof value}>`;
 }
 
-// Load MSG91's Web SDK and initialize its default widget UI.
+// Load MSG91 Web SDK and initialize its widget.
 function loadMsg91Widget(configuration) {
   return new Promise((resolve, reject) => {
     const initialize = () => {
@@ -160,6 +160,8 @@ const GrainIcon = () => (
 );
 
 export default function Login() {
+  const navigate = useNavigate();
+
   const [loginType, setLoginType] = useState('owner');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -168,9 +170,13 @@ export default function Login() {
   const [msg91Status, setMsg91Status] = useState('');
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+
+  const verificationStarted = useRef(false);
 
   const {
     login,
+    verifyLoginOtp,
     cancelOtp,
     sessionExpired,
   } = useAuth();
@@ -179,6 +185,8 @@ export default function Login() {
 
   const switchType = type => {
     cancelOtp();
+    verificationStarted.current = false;
+
     setLoginType(type);
     setOtpStage(false);
     setMsg91Status('');
@@ -187,8 +195,8 @@ export default function Login() {
     setSecondPassword('');
   };
 
-  // STEP 1: Submit credentials and request the backend challenge.
-  // STEP 2: Initialize MSG91's default OTP widget.
+  // STEP 1: Submit credentials and request backend challenge.
+  // STEP 2: Initialize MSG91 OTP widget.
   const handleSubmit = async e => {
     e.preventDefault();
 
@@ -211,6 +219,7 @@ export default function Login() {
     if (Object.keys(found).length > 0) return;
 
     setLoading(true);
+    verificationStarted.current = false;
 
     try {
       await login(phone, password, secondPassword, loginType);
@@ -225,9 +234,27 @@ export default function Login() {
         identifier: `91${phone}`,
         exposeMethods: false,
 
-        success: data => {
-          // IMPORTANT: Inspect property names only.
-          // Never print the actual response or access token.
+        // MSG91 success callback.
+        // data.message is the MSG91 access token.
+        success: async data => {
+          if (verificationStarted.current) return;
+
+          if (
+            typeof data?.message !== 'string' ||
+            !data.message.trim()
+          ) {
+            setMsg91Status('failed');
+            setErrors({
+              form: 'MSG91 did not return a valid verification token.',
+            });
+            return;
+          }
+
+          verificationStarted.current = true;
+          setVerifying(true);
+          setMsg91Status('verifying');
+          setErrors({});
+
           console.log(
             'MSG91 success response keys:',
             Object.keys(data || {})
@@ -238,10 +265,45 @@ export default function Login() {
             maskStructure(data)
           );
 
-          setMsg91Status('success');
+          try {
+            // Send MSG91 token to the Grain Ledger backend.
+            const result = await verifyLoginOtp(data.message);
+
+            const destinations = {
+              owner: '/dashboard',
+              party: '/commissiondar',
+              admin: '/admin',
+            };
+
+            const destination = destinations[result?.loginType];
+
+            if (!destination) {
+              throw new Error(
+                'Unsupported account type. Please log in again.'
+              );
+            }
+
+            setMsg91Status('success');
+
+            // Navigate to the correct dashboard.
+            navigate(destination, { replace: true });
+          } catch (err) {
+            verificationStarted.current = false;
+            setMsg91Status('failed');
+
+            setErrors({
+              form:
+                err.message ||
+                'Backend OTP verification failed. Please try again.',
+            });
+          } finally {
+            setVerifying(false);
+          }
         },
 
         failure: error => {
+          verificationStarted.current = false;
+
           console.error(
             'MSG91 failure response keys:',
             Object.keys(error || {})
@@ -253,6 +315,7 @@ export default function Login() {
           );
 
           setMsg91Status('failed');
+
           setErrors({
             form: 'MSG91 verification failed. Please try again.',
           });
@@ -264,6 +327,7 @@ export default function Login() {
       setErrors({
         form: err.message || 'Unable to start verification. Please try again.',
       });
+
       setMsg91Status('failed');
     } finally {
       setLoading(false);
@@ -271,10 +335,13 @@ export default function Login() {
   };
 
   const handleBack = () => {
+    verificationStarted.current = false;
+
     cancelOtp();
     setOtpStage(false);
     setMsg91Status('');
     setErrors({});
+    setVerifying(false);
   };
 
   return (
@@ -339,7 +406,9 @@ export default function Login() {
           <form
             className="lbody"
             role="tabpanel"
-            aria-labelledby={loginType === 'admin' ? 'tab-admin' : `tab-${loginType}`}
+            aria-labelledby={
+              loginType === 'admin' ? 'tab-admin' : `tab-${loginType}`
+            }
             onSubmit={handleSubmit}
             noValidate
           >
@@ -365,6 +434,7 @@ export default function Login() {
                 />
                 <span className="ficon"><PhoneIcon /></span>
               </div>
+
               {errors.phone && <div className="lerror">{errors.phone}</div>}
             </div>
 
@@ -387,6 +457,7 @@ export default function Login() {
                   }}
                 />
               </div>
+
               {errors.password && <div className="lerror">{errors.password}</div>}
             </div>
 
@@ -409,6 +480,7 @@ export default function Login() {
                   }}
                 />
               </div>
+
               {errors.secondPassword && (
                 <div className="lerror">{errors.secondPassword}</div>
               )}
@@ -437,16 +509,21 @@ export default function Login() {
               <p role="status">Opening MSG91 verification...</p>
             )}
 
+            {msg91Status === 'verifying' && (
+              <div className="lnotice" role="status">
+                OTP verified. Connecting securely to Grain Ledger...
+              </div>
+            )}
+
             {msg91Status === 'success' && (
               <div className="lnotice" role="status">
-                MSG91 verification completed. Check the browser console
-                for the masked response structure.
+                Login successful. Opening your dashboard...
               </div>
             )}
 
             {msg91Status === 'failed' && (
               <div className="lerror lerror-form" role="alert">
-                {errors.form || 'MSG91 verification could not be completed.'}
+                {errors.form || 'Verification could not be completed.'}
               </div>
             )}
 
@@ -460,7 +537,7 @@ export default function Login() {
               type="button"
               className="ltab"
               onClick={handleBack}
-              disabled={loading}
+              disabled={loading || verifying}
             >
               Back to Login
             </button>

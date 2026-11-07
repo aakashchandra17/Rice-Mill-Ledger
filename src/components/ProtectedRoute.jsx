@@ -1,4 +1,3 @@
-
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,12 +8,19 @@ export default function ProtectedRoute({ children, roles }) {
     return <Navigate to="/" replace />;
   }
 
-  if (!['owner', 'party'].includes(role)) {
+  const allowedRoles = ['owner', 'party', 'admin'];
+
+  if (!allowedRoles.includes(role)) {
     return <Navigate to="/" replace />;
   }
 
   if (roles && !roles.includes(role)) {
-    const home = role === 'party' ? '/commissiondar' : '/dashboard';
+    const home =
+      role === 'admin'
+        ? '/admin'
+        : role === 'party'
+          ? '/commissiondar'
+          : '/dashboard';
 
     return (
       <div className="panel">

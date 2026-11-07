@@ -26,21 +26,6 @@ function ensureApiUrl() {
   }
 }
 
-function parseJwt(token) {
-  try {
-    const payload = token.split('.')[1]
-      .replace(/-/g, '+')
-      .replace(/_/g, '/');
-
-    const decoded = atob(payload);
-    const bytes = Uint8Array.from(decoded, char => char.charCodeAt(0));
-
-    return JSON.parse(new TextDecoder().decode(bytes));
-  } catch {
-    return {};
-  }
-}
-
 async function readResponse(res) {
   const text = await res.text();
 
@@ -139,8 +124,13 @@ export async function login(phone, password, secondPassword) {
 }
 
 // STEP 2: Verify MSG91 access token with Grain Ledger backend.
-export async function verifyOtp(challengeId, msg91AccessToken, phone) {
+// Backend returns the Grain Ledger JWT in access_token.
+export async function verifyOtp(challengeId, msg91AccessToken) {
   ensureApiUrl();
+
+  if (!challengeId) {
+    throw new ApiError('Login challenge ID is missing.', 400);
+  }
 
   if (!msg91AccessToken) {
     throw new ApiError(
@@ -157,34 +147,18 @@ export async function verifyOtp(challengeId, msg91AccessToken, phone) {
     },
   });
 
-  const token = data?.access_token;
-
-  if (!token) {
+  if (!data?.access_token) {
     throw new ApiError(
       'The backend did not return the Grain Ledger access token.',
       500
     );
   }
 
-  const claims = parseJwt(token);
-
-  const user = {
-    id: claims.sub,
-    name: claims.name || data?.user?.name || '',
-    phone,
-    role: data?.role || data?.user?.role || claims.role,
-    businessId: data?.business_id ?? claims.business_id,
-    partyId: data?.party_id ?? claims.party_id,
+  return {
+    token: data.access_token,
+    message: data.message,
+    tokenType: data.token_type,
   };
-
-  if (!user.role) {
-    throw new ApiError(
-      'Login succeeded, but the JWT did not contain a role.',
-      500
-    );
-  }
-
-  return { token, user };
 }
 
 // Miller / owner APIs

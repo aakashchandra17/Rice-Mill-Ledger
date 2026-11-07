@@ -1,4 +1,4 @@
-
+import AdminDashboard from './pages/AdminDashboard';
 import {
   Routes,
   Route,
@@ -193,7 +193,8 @@ function CommissiondarApp() {
 
 /* Admin application */
 function AdminApp() {
-  const { user } = useAuth();
+  return <AdminDashboard />;
+
 
   return (
     <div className="app-layout top-layout">
@@ -217,7 +218,7 @@ function AdminApp() {
 
 function App() {
   const location = useLocation();
-  const { user } = useAuth();
+  const { token } = useAuth();
 
   const isLogin = location.pathname === '/';
 
@@ -228,7 +229,7 @@ function App() {
 
   const isPublicPage = isLogin || isPublicRegistration;
 
-  if (!isPublicPage && !user) {
+  if (!isPublicPage && !token) {
     return <Navigate to="/" replace />;
   }
 

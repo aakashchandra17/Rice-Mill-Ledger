@@ -1,5 +1,12 @@
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+} from 'react';
+
 import {
   login as apiLogin,
   verifyOtp as apiVerifyOtp,
@@ -13,83 +20,99 @@ export function AuthProvider({ children }) {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [pendingLogin, setPendingLogin] = useState(null);
 
+  // Always holds the latest login challenge,
+  // even inside an older MSG91 callback.
+  const pendingLoginRef = useRef(null);
+
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      pendingLoginRef.current = null;
+      setPendingLogin(null);
       setSession(null);
       setSessionExpired(true);
-      setPendingLogin(null);
     });
 
     return () => setUnauthorizedHandler(() => {});
   }, []);
 
-  // STEP 1: Verify passwords and request an OTP challenge.
+  // STEP 1: Verify passwords and request OTP challenge.
   const login = async (phone, password, secondPassword, loginType) => {
-    const result = await apiLogin(phone, password, secondPassword);
+    const result = await apiLogin(
+      phone,
+      password,
+      secondPassword
+    );
 
-    setPendingLogin({
+    const loginDetails = {
       challengeId: result.challengeId,
       phone,
       loginType,
-    });
+    };
 
+    // Update ref immediately, without waiting for React.
+    pendingLoginRef.current = loginDetails;
+    setPendingLogin(loginDetails);
+
+    setSession(null);
     setSessionExpired(false);
 
     return result;
   };
 
-  // STEP 2: Send the MSG91 access token to the backend.
+  // STEP 2: Verify MSG91 token with Grain Ledger backend.
   const verifyLoginOtp = async msg91AccessToken => {
-    if (!pendingLogin) {
-      throw new Error('Your login session has expired. Please log in again.');
+    const currentLogin = pendingLoginRef.current;
+
+    if (!currentLogin) {
+      throw new Error(
+        'Your login session has expired. Please log in again.'
+      );
     }
 
-    if (!msg91AccessToken) {
-      throw new Error('MSG91 verification token is missing. Please try again.');
+    if (
+      typeof msg91AccessToken !== 'string' ||
+      !msg91AccessToken.trim()
+    ) {
+      throw new Error(
+        'MSG91 verification token is missing. Please try again.'
+      );
     }
 
-    const { challengeId, phone, loginType } = pendingLogin;
+    const { challengeId, loginType } = currentLogin;
 
-    const { token, user } = await apiVerifyOtp(
+    // This must call the Grain Ledger /verify-otp endpoint.
+    const result = await apiVerifyOtp(
       challengeId,
-      msg91AccessToken,
-      phone
+      msg91AccessToken
     );
 
-    // Backend JWT roles:
-    // owner = Miller
-    // party = Commissiondar
-    // admin = Grain Ledger Admin
-    const allowedRoles = ['owner', 'party', 'admin'];
-
-    if (!user || !allowedRoles.includes(user.role)) {
-      setPendingLogin(null);
+    if (!result?.token) {
       throw new Error(
-        'Your account has an unsupported role. Please contact support.'
+        'The backend did not return a valid Grain Ledger token.'
       );
     }
 
-    // Check that the selected account type matches the backend role.
-    if (loginType && loginType !== user.role) {
-      setPendingLogin(null);
-      throw Object.assign(
-        new Error('Please select the correct account type and log in again.'),
-        { wrongType: true }
-      );
-    }
+    const newSession = {
+      token: result.token,
+      loginType,
+    };
 
-    setSession({ token, user });
+    setSession(newSession);
+
+    pendingLoginRef.current = null;
     setPendingLogin(null);
     setSessionExpired(false);
 
-    return user;
+    return { loginType };
   };
 
   const cancelOtp = () => {
+    pendingLoginRef.current = null;
     setPendingLogin(null);
   };
 
   const logout = () => {
+    pendingLoginRef.current = null;
     setPendingLogin(null);
     setSession(null);
     setSessionExpired(false);
@@ -97,8 +120,8 @@ export function AuthProvider({ children }) {
 
   const value = {
     token: session?.token ?? null,
-    user: session?.user ?? null,
-    role: session?.user?.role ?? null,
+    user: null,
+    role: session?.loginType ?? null,
     sessionExpired,
     pendingLogin,
     login,
