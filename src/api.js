@@ -91,7 +91,7 @@ async function request(path, { method = 'GET', body, token } = {}) {
 export async function login(phone, password, secondPassword) {
   ensureApiUrl();
 
-  const res = await fetch(`${BASE_URL}/login`, {
+  const res = await fetch(`${BASE_URL}/api/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
