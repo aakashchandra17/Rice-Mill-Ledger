@@ -20,7 +20,7 @@ export const setUnauthorizedHandler = fn => {
 function ensureApiUrl() {
   if (!BASE_URL) {
     throw new ApiError(
-      'Backend URL is not configured. Please configure VITE_API_URL in .env.local.',
+      'Backend URL is not configured. Please configure VITE_API_URL.',
       0
     );
   }
@@ -44,10 +44,15 @@ function getErrorMessage(data, fallback) {
   return data?.detail || data?.message || fallback;
 }
 
+// All shared API requests automatically use the /api prefix.
 async function request(path, { method = 'GET', body, token } = {}) {
   ensureApiUrl();
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const apiPath = path.startsWith('/api/')
+    ? path
+    : `/api${path.startsWith('/') ? path : `/${path}`}`;
+
+  const res = await fetch(`${BASE_URL}${apiPath}`, {
     method,
     headers: {
       ...(body !== undefined
@@ -87,7 +92,7 @@ async function request(path, { method = 'GET', body, token } = {}) {
 }
 
 // STEP 1: Verify phone and both passwords.
-// Backend returns a temporary challenge_id.
+// Backend endpoint: POST /api/login
 export async function login(phone, password, secondPassword) {
   ensureApiUrl();
 
@@ -123,8 +128,8 @@ export async function login(phone, password, secondPassword) {
   };
 }
 
-// STEP 2: Verify MSG91 access token with Grain Ledger backend.
-// Backend returns the Grain Ledger JWT in access_token.
+// STEP 2: Verify MSG91 access token.
+// Backend endpoint: POST /api/verify-otp
 export async function verifyOtp(challengeId, msg91AccessToken) {
   ensureApiUrl();
 
