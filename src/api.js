@@ -1,5 +1,7 @@
 
-const BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const configuredUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const isDev = import.meta.env.DEV;
+const BASE_URL = isDev ? '' : (configuredUrl || 'https://grain-ledger.onrender.com');
 
 export const USE_MOCK = false;
 
@@ -18,7 +20,7 @@ export const setUnauthorizedHandler = fn => {
 };
 
 function ensureApiUrl() {
-  if (!BASE_URL) {
+  if (import.meta.env.PROD && !BASE_URL) {
     throw new ApiError(
       'Backend URL is not configured. Please configure VITE_API_URL.',
       0
@@ -176,11 +178,31 @@ export const getFarmers = token =>
 export const createFarmer = (data, token) =>
   request('/farmers', { method: 'POST', body: data, token });
 
+export const updateFarmer = (farmerId, data, token) =>
+  request(`/farmers/${farmerId}`, { method: 'PUT', body: data, token });
+
 export const deleteFarmer = (farmerId, token) =>
   request(`/farmers/${farmerId}`, {
     method: 'DELETE',
     token,
   });
+
+// Miller Commissiondar Contacts
+export const getMillerCommissiondars = token =>
+  request('/miller/commissiondars', { token });
+
+export const createMillerCommissiondar = (data, token) =>
+  request('/miller/commissiondars', { method: 'POST', body: data, token });
+
+export const updateMillerCommissiondar = (contactId, data, token) =>
+  request(`/miller/commissiondars/${contactId}`, {
+    method: 'PUT',
+    body: data,
+    token,
+  });
+
+export const getMillerCommissiondar = (contactId, token) =>
+  request(`/miller/commissiondars/${contactId}`, { token });
 
 export const getDashboard = token =>
   request('/dashboard', { token });
@@ -244,6 +266,20 @@ export const deliverCommissiondarStock = (data, token) =>
     body: data,
     token,
   });
+
+// Commissiondar Farmers
+export const getCommissiondarFarmers = token =>
+  request('/commissiondar/farmers', { token });
+
+export const createCommissiondarFarmer = (data, token) =>
+  request('/commissiondar/farmers', { method: 'POST', body: data, token });
+
+// Commissiondar Custom Grain Types
+export const getCommissiondarGrainTypes = token =>
+  request('/commissiondar/grain-types', { token });
+
+export const createCommissiondarGrainType = (data, token) =>
+  request('/commissiondar/grain-types', { method: 'POST', body: data, token });
 
 // Registration APIs
 export const registerMiller = ({

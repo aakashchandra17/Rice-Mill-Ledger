@@ -13,10 +13,19 @@ import {
   setUnauthorizedHandler,
 } from '../api';
 
+const SESSION_STORAGE_KEY = 'grain_ledger_session';
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [sessionExpired, setSessionExpired] = useState(false);
   const [pendingLogin, setPendingLogin] = useState(null);
 
@@ -28,6 +37,9 @@ export function AuthProvider({ children }) {
     setUnauthorizedHandler(() => {
       pendingLoginRef.current = null;
       setPendingLogin(null);
+      try {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+      } catch {}
       setSession(null);
       setSessionExpired(true);
     });
@@ -97,6 +109,12 @@ export function AuthProvider({ children }) {
       loginType,
     };
 
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
+    } catch (err) {
+      console.error('Failed to store session in localStorage:', err);
+    }
+
     setSession(newSession);
 
     pendingLoginRef.current = null;
@@ -114,6 +132,9 @@ export function AuthProvider({ children }) {
   const logout = () => {
     pendingLoginRef.current = null;
     setPendingLogin(null);
+    try {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch {}
     setSession(null);
     setSessionExpired(false);
   };

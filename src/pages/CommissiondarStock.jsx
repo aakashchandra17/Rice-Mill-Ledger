@@ -1,12 +1,14 @@
-
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   getCommissiondarStock,
   receiveCommissiondarStock,
   deliverCommissiondarStock,
+  getCommissiondarFarmers,
+  getCommissiondarGrainTypes,
   describeError,
 } from '../api';
 import { useAuth } from '../context/AuthContext';
+import SearchableSelect from '../components/SearchableSelect';
 
 const quantity = value =>
   Number(value || 0).toLocaleString('en-IN');
@@ -29,31 +31,39 @@ const formatDate = value => {
   });
 };
 
-const movementLabel = type => {
-  const labels = {
-    received_from_farmer: 'Received from Farmer',
-    delivered_to_mill: 'Delivered to Mill',
-  };
-
-  return labels[type] || 'Other Movement';
-};
-
 export default function CommissiondarStock() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [stock, setStock] = useState(null);
+  const [farmers, setFarmers] = useState([]);
+  const [grainTypes, setGrainTypes] = useState([]);
+
+  // Load My Mills from local storage
+  const userKey = user?.id || user?.phone || 'default';
+  const millsStorageKey = `commissiondar_mills_${userKey}`;
+  const myMills = useMemo(() => {
+    try {
+      const saved = localStorage.getItem(millsStorageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }, [millsStorageKey]);
+
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  // Receive Form State
   const [farmerId, setFarmerId] = useState('');
-  const [receiveItemId, setReceiveItemId] = useState('');
+  const [receiveGrainTypeId, setReceiveGrainTypeId] = useState('');
   const [receiveQuantity, setReceiveQuantity] = useState('');
   const [receiveRate, setReceiveRate] = useState('');
 
-  const [businessId, setBusinessId] = useState('');
-  const [deliverItemId, setDeliverItemId] = useState('');
+  // Deliver Form State
+  const [millName, setMillName] = useState('');
+  const [deliverGrainTypeId, setDeliverGrainTypeId] = useState('');
   const [deliverQuantity, setDeliverQuantity] = useState('');
   const [deliverRate, setDeliverRate] = useState('');
 
@@ -76,23 +86,87 @@ export default function CommissiondarStock() {
     }
   }, [token]);
 
+  const loadAuxData = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [fData, gData] = await Promise.allSettled([
+        getCommissiondarFarmers(token),
+        getCommissiondarGrainTypes(token),
+      ]);
+      if (fData.status === 'fulfilled') {
+        const list = Array.isArray(fData.value) ? fData.value : fData.value?.farmers || [];
+        setFarmers(list);
+      }
+      if (gData.status === 'fulfilled') {
+        const list = Array.isArray(gData.value) ? gData.value : gData.value?.grain_types || [];
+        setGrainTypes(list);
+      }
+    } catch {
+      // non-blocking
+    }
+  }, [token]);
+
   useEffect(() => {
     loadStock();
-  }, [loadStock]);
+    loadAuxData();
+  }, [loadStock, loadAuxData]);
+
+  const farmerMap = useMemo(() => {
+    const map = {};
+    farmers.forEach(f => {
+      map[f.id] = f.name;
+    });
+    return map;
+  }, [farmers]);
+
+  const grainTypeMap = useMemo(() => {
+    const map = {};
+    grainTypes.forEach(g => {
+      map[g.id] = g.name;
+    });
+    return map;
+  }, [grainTypes]);
+
+  // Options for SearchableSelect
+  const farmerOptions = useMemo(() => {
+    return farmers.map(f => ({
+      id: f.id,
+      name: f.name,
+      subtitle: f.village ? `Village: ${f.village}` : 'Farmer',
+      badge: f.phone || undefined,
+    }));
+  }, [farmers]);
+
+  const grainOptions = useMemo(() => {
+    return grainTypes.map(g => ({
+      id: g.id,
+      name: g.name,
+      subtitle: `Unit: ${g.unit || 'quintal'}`,
+      badge: g.unit || undefined,
+    }));
+  }, [grainTypes]);
+
+  const millOptions = useMemo(() => {
+    return myMills
+      .filter(m => m.isActive !== false)
+      .map(m => ({
+        id: m.name,
+        name: m.name,
+        subtitle: m.location ? `Location: ${m.location}` : 'Rice Mill',
+        badge: 'My Mills',
+      }));
+  }, [myMills]);
 
   async function handleReceive(event) {
     event.preventDefault();
     setError('');
     setMessage('');
 
-    if (
-      !Number.isInteger(Number(farmerId)) ||
-      Number(farmerId) <= 0 ||
-      !Number.isInteger(Number(receiveItemId)) ||
-      Number(receiveItemId) <= 0 ||
-      Number(receiveQuantity) <= 0
-    ) {
-      setError('Enter valid Farmer ID, Item ID and Quantity.');
+    const fId = Number(farmerId);
+    const qty = Number(receiveQuantity);
+
+    if (!Number.isInteger(fId) || fId <= 0 || !Number.isFinite(qty) || qty <= 0) {
+      setError('Please select a Farmer by name and specify positive Quantity.');
       return;
     }
 
@@ -100,10 +174,13 @@ export default function CommissiondarStock() {
 
     try {
       const payload = {
-        farmer_id: Number(farmerId),
-        item_id: Number(receiveItemId),
-        quantity: Number(receiveQuantity),
+        farmer_id: fId,
+        quantity: qty,
       };
+
+      if (receiveGrainTypeId) {
+        payload.grain_type_id = Number(receiveGrainTypeId);
+      }
 
       if (receiveRate !== '') {
         payload.rate = Number(receiveRate);
@@ -111,9 +188,9 @@ export default function CommissiondarStock() {
 
       await receiveCommissiondarStock(payload, token);
 
-      setMessage('Stock received successfully.');
+      setMessage('✓ Stock received successfully.');
       setFarmerId('');
-      setReceiveItemId('');
+      setReceiveGrainTypeId('');
       setReceiveQuantity('');
       setReceiveRate('');
       await loadStock();
@@ -129,34 +206,35 @@ export default function CommissiondarStock() {
     setError('');
     setMessage('');
 
-    if (
-      !Number.isInteger(Number(businessId)) ||
-      Number(businessId) <= 0 ||
-      !Number.isInteger(Number(deliverItemId)) ||
-      Number(deliverItemId) <= 0 ||
-      Number(deliverQuantity) <= 0 ||
-      Number(deliverRate) < 0
-    ) {
-      setError('Enter valid Business ID, Item ID, Quantity and Rate.');
+    const targetMill = millName.trim();
+    const qty = Number(deliverQuantity);
+
+    if (!targetMill || !Number.isFinite(qty) || qty <= 0) {
+      setError('Please select/enter a Mill Name and positive Quantity.');
       return;
     }
 
     setBusy(true);
 
     try {
-      await deliverCommissiondarStock(
-        {
-          business_id: Number(businessId),
-          item_id: Number(deliverItemId),
-          quantity: Number(deliverQuantity),
-          rate: Number(deliverRate),
-        },
-        token
-      );
+      const payload = {
+        mill_name: targetMill,
+        quantity: qty,
+      };
 
-      setMessage('Stock delivery recorded successfully.');
-      setBusinessId('');
-      setDeliverItemId('');
+      if (deliverGrainTypeId) {
+        payload.grain_type_id = Number(deliverGrainTypeId);
+      }
+
+      if (deliverRate !== '') {
+        payload.rate = Number(deliverRate);
+      }
+
+      await deliverCommissiondarStock(payload, token);
+
+      setMessage('✓ Stock delivery recorded successfully.');
+      setMillName('');
+      setDeliverGrainTypeId('');
       setDeliverQuantity('');
       setDeliverRate('');
       await loadStock();
@@ -167,68 +245,49 @@ export default function CommissiondarStock() {
     }
   }
 
-  const history = Array.isArray(stock?.history)
-    ? stock.history
-    : [];
+  const rawHistory = Array.isArray(stock?.history) ? stock.history : [];
+  const validHistory = rawHistory.filter(
+    item => typeof item === 'object' && item !== null
+  );
 
-  const validHistory = history.filter(item => !item.is_void);
-
-  const totalReceived = validHistory
-    .filter(item => Number(item.quantity) > 0)
-    .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-
-  const totalDelivered = validHistory
-    .filter(item => Number(item.quantity) < 0)
-    .reduce((sum, item) => sum + Math.abs(Number(item.quantity || 0)), 0);
+  const currentStock = stock?.current_stock ?? stock?.currentStock ?? 0;
+  const totalReceived = stock?.total_received ?? stock?.totalReceived ?? 0;
+  const totalDelivered = stock?.total_delivered ?? stock?.totalDelivered ?? 0;
 
   const summaries = [
     {
-      label: 'Available Stock',
-      value: quantity(stock?.stock_on_hand),
+      label: 'Current In-Stock',
+      value: quantity(currentStock),
+      note: 'Available in your yard/godown',
+      color: 'var(--green-glow)',
     },
     {
       label: 'Total Received',
       value: quantity(totalReceived),
+      note: 'Total grain received from farmers',
+      color: 'var(--ink)',
     },
     {
       label: 'Total Delivered',
       value: quantity(totalDelivered),
+      note: 'Total grain delivered to mills',
+      color: 'var(--cyan)',
     },
     {
-      label: 'Transactions',
+      label: 'Total Movements',
       value: validHistory.length,
+      note: 'Recorded movement ledger entries',
+      color: 'var(--gold)',
     },
   ];
 
-  const inputStyle = {
-    width: '100%',
-    padding: '11px 12px',
-    marginTop: 7,
-    borderRadius: 8,
-    border: '1px solid var(--border, #ccc)',
-    boxSizing: 'border-box',
-  };
-
-  const formStyle = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    alignItems: 'end',
-    gap: 16,
-    marginBottom: 20,
-  };
-
-  const cardStyle = {
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 22,
-  };
-
   return (
     <div className="commissiondar-stock-page">
-      <div style={{ marginBottom: 22 }}>
-        <h1>My Stock Ledger</h1>
-        <p style={{ color: 'var(--muted)' }}>
-          Manage stock received from farmers and delivered to mills.
+      <div style={{ marginBottom: 24 }}>
+        <p className="dashboard-eyebrow">COMMISSIONDAR / INVENTORY</p>
+        <h1 style={{ margin: '4px 0 8px' }}>Stock Movements & Yard Ledger</h1>
+        <p style={{ color: 'var(--muted)', margin: 0 }}>
+          Manage grain intake from your farmers and track deliveries to rice mills.
         </p>
       </div>
 
@@ -239,186 +298,279 @@ export default function CommissiondarStock() {
       )}
 
       {message && (
-        <div className="panel" role="status" style={{ padding: 14, marginBottom: 16, color: 'var(--green)' }}>
+        <div className="panel" role="status" style={{ padding: 14, marginBottom: 16, color: 'var(--green-light)', borderLeft: '4px solid var(--green)' }}>
           {message}
         </div>
       )}
 
+      {/* Summary Stat Cards */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 14,
-          marginBottom: 24,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: 16,
+          marginBottom: 26,
         }}
       >
         {summaries.map(item => (
-          <div className="panel" key={item.label} style={{ padding: 20 }}>
-            <p style={{ color: 'var(--muted)', marginTop: 0 }}>
+          <div className="panel" key={item.label} style={{ padding: 22, borderRadius: 16, border: '1px solid var(--border)' }}>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 6px', fontWeight: 600 }}>
               {item.label}
             </p>
-            <h2 style={{ marginBottom: 0 }}>{item.value}</h2>
+            <h2 style={{ margin: '0 0 4px', fontSize: '1.9rem', color: item.color }}>
+              {item.value}
+            </h2>
+            <p style={{ color: 'var(--muted)', fontSize: 12, margin: 0 }}>
+              {item.note}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="panel" style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Receive Stock from a Farmer</h2>
+      {/* 2-column layout for Receive & Deliver forms */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 20, marginBottom: 26 }}>
+        {/* Receive Stock Form */}
+        <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 24 }}>📥</span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Receive Grain from Farmer</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
+                Incoming stock from your farmer accounts.
+              </p>
+            </div>
+          </div>
 
-        <form onSubmit={handleReceive} style={formStyle}>
-          <label>
-            <b>Farmer ID</b>
-            <input style={inputStyle} type="number" min="1" required value={farmerId} onChange={e => setFarmerId(e.target.value)} disabled={busy} />
-          </label>
+          <form onSubmit={handleReceive} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <SearchableSelect
+                id="receiveFarmer"
+                label="Farmer Name *"
+                placeholder="Search farmer by name..."
+                options={farmerOptions}
+                value={farmerId}
+                onChange={id => setFarmerId(id)}
+                disabled={busy}
+                required
+              />
+            </div>
 
-          <label>
-            <b>Item ID</b>
-            <input style={inputStyle} type="number" min="1" required value={receiveItemId} onChange={e => setReceiveItemId(e.target.value)} disabled={busy} />
-          </label>
+            <div>
+              <SearchableSelect
+                id="receiveGrain"
+                label="Custom Grain Variety"
+                placeholder="Select grain type (optional)..."
+                options={grainOptions}
+                value={receiveGrainTypeId}
+                onChange={id => setReceiveGrainTypeId(id)}
+                disabled={busy}
+              />
+            </div>
 
-          <label>
-            <b>Quantity</b>
-            <input style={inputStyle} type="number" min="0.01" step="0.01" required value={receiveQuantity} onChange={e => setReceiveQuantity(e.target.value)} disabled={busy} />
-          </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                  Quantity (Units) *
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  required
+                  placeholder="e.g. 150"
+                  value={receiveQuantity}
+                  onChange={e => setReceiveQuantity(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
 
-          <label>
-            <b>Rate (optional)</b>
-            <input style={inputStyle} type="number" min="0" step="0.01" value={receiveRate} onChange={e => setReceiveRate(e.target.value)} disabled={busy} />
-          </label>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                  Rate (₹ / Unit)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 2150"
+                  value={receiveRate}
+                  onChange={e => setReceiveRate(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+            </div>
 
-          <button type="submit" disabled={busy}>
-            {busy ? 'Please wait...' : 'Receive Stock'}
-          </button>
-        </form>
+            <button type="submit" className="btn btn-primary" disabled={busy} style={{ minHeight: 46, marginTop: 4 }}>
+              {busy ? 'Recording...' : '📥 Record Grain Intake'}
+            </button>
+          </form>
+        </div>
+
+        {/* Deliver Stock Form */}
+        <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 24 }}>📤</span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Deliver Grain to Mill</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
+                Dispatch stock to a destination rice mill.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleDeliver} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              {millOptions.length > 0 ? (
+                <SearchableSelect
+                  id="deliverMill"
+                  label="Destination Rice Mill *"
+                  placeholder="Select from My Mills or type..."
+                  options={millOptions}
+                  value={millName}
+                  onChange={name => setMillName(name)}
+                  disabled={busy}
+                  required
+                />
+              ) : (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                    Mill Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Sri Lakshmi Srinivasa Mill"
+                    value={millName}
+                    onChange={e => setMillName(e.target.value)}
+                    disabled={busy}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <SearchableSelect
+                id="deliverGrain"
+                label="Custom Grain Variety"
+                placeholder="Select grain type (optional)..."
+                options={grainOptions}
+                value={deliverGrainTypeId}
+                onChange={id => setDeliverGrainTypeId(id)}
+                disabled={busy}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                  Quantity (Units) *
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  required
+                  placeholder="e.g. 200"
+                  value={deliverQuantity}
+                  onChange={e => setDeliverQuantity(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                  Agreed Rate (₹ / Unit)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 2200"
+                  value={deliverRate}
+                  onChange={e => setDeliverRate(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="btn btn-primary" disabled={busy} style={{ minHeight: 46, marginTop: 4 }}>
+              {busy ? 'Recording...' : '📤 Record Mill Delivery'}
+            </button>
+          </form>
+        </div>
       </div>
 
-      <div className="panel" style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Deliver Stock to a Mill</h2>
-
-        <form onSubmit={handleDeliver} style={formStyle}>
-          <label>
-            <b>Business ID</b>
-            <input style={inputStyle} type="number" min="1" required value={businessId} onChange={e => setBusinessId(e.target.value)} disabled={busy} />
-          </label>
-
-          <label>
-            <b>Item ID</b>
-            <input style={inputStyle} type="number" min="1" required value={deliverItemId} onChange={e => setDeliverItemId(e.target.value)} disabled={busy} />
-          </label>
-
-          <label>
-            <b>Quantity</b>
-            <input style={inputStyle} type="number" min="0.01" step="0.01" required value={deliverQuantity} onChange={e => setDeliverQuantity(e.target.value)} disabled={busy} />
-          </label>
-
-          <label>
-            <b>Rate</b>
-            <input style={inputStyle} type="number" min="0" step="0.01" required value={deliverRate} onChange={e => setDeliverRate(e.target.value)} disabled={busy} />
-          </label>
-
-          <button type="submit" disabled={busy}>
-            {busy ? 'Please wait...' : 'Deliver Stock'}
-          </button>
-        </form>
-      </div>
-
-      <div className="panel" style={{ padding: 20 }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 12,
-            marginBottom: 18,
-          }}
-        >
+      {/* Movement Ledger History Table */}
+      <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div>
-            <h2 style={{ margin: 0 }}>Stock History</h2>
-            <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
-              Your stock movement records.
+            <h2 style={{ margin: 0 }}>Stock Movement History</h2>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 0' }}>
+              Chronological log of grain received from farmers and delivered to mills.
             </p>
           </div>
 
-          <button type="button" onClick={loadStock} disabled={loading || busy}>
-            {loading ? 'Loading...' : '↻ Refresh'}
+          <button type="button" className="btn btn-ghost" onClick={loadStock} disabled={loading || busy}>
+            {loading ? 'Refreshing...' : '↻ Refresh'}
           </button>
         </div>
 
-        {loading && !stock ? (
-          <p>Loading history...</p>
-        ) : history.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 25 }}>
-            <p style={{ fontSize: 28 }}>📦</p>
-            <h3>No stock history found</h3>
-            <p style={{ color: 'var(--muted)' }}>
-              Your stock movements will appear here.
+        {loading ? (
+          <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 24 }}>Loading movement ledger...</p>
+        ) : validHistory.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 36 }}>
+            <p style={{ fontSize: 32, margin: 0 }}>📦</p>
+            <h3 style={{ margin: '12px 0 6px' }}>No stock movements recorded</h3>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
+              Use the intake or delivery form above to record your first stock movement.
             </p>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: 650 }}>
+            <table>
               <thead>
                 <tr>
                   <th>Date & Time</th>
-                  <th>Movement</th>
-                  <th>Farmer ID</th>
+                  <th>Movement Type</th>
+                  <th>Party / Destination</th>
+                  <th>Grain Variety</th>
                   <th>Quantity</th>
                   <th>Rate</th>
-                  <th>Status</th>
+                  <th>Calculated Amount</th>
                 </tr>
               </thead>
-
               <tbody>
-                {history.map((entry, index) => {
-                  const received = Number(entry.quantity) > 0;
+                {validHistory.map((item, index) => {
+                  const isDelivery = item.type === 'deliver' || item.movement_type === 'deliver' || Number(item.quantity) < 0;
+                  const partyName = item.mill_name || (item.farmer_id ? farmerMap[item.farmer_id] || `Farmer #${item.farmer_id}` : 'General Stock');
+                  const grainName = item.grain_type_name || (item.grain_type_id ? grainTypeMap[item.grain_type_id] || `Variety #${item.grain_type_id}` : 'Standard Paddy');
+                  const qtyVal = Math.abs(Number(item.quantity || 0));
+                  const rateVal = item.rate != null ? Number(item.rate) : null;
+                  const amtVal = item.amount != null ? Number(item.amount) : (rateVal ? qtyVal * rateVal : null);
 
                   return (
-                    <tr key={entry.id ?? index}>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {formatDate(entry.created_at)}
-                      </td>
-
-                      <td style={{ fontWeight: 600 }}>
-                        {movementLabel(entry.movement_type)}
-                      </td>
-
-                      <td>{entry.farmer_id ?? '—'}</td>
-
-                      <td>
-                        <strong
-                          style={{
-                            color: entry.is_void
-                              ? 'var(--muted)'
-                              : received
-                                ? 'var(--green)'
-                                : '#c65b48',
-                          }}
-                        >
-                          {received ? '+' : ''}
-                          {quantity(entry.quantity)}
-                        </strong>
-                      </td>
-
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {money(entry.rate)}
-                      </td>
-
+                    <tr key={item.id ?? index}>
+                      <td>{formatDate(item.created_at || item.date || item.timestamp)}</td>
                       <td>
                         <span
+                          className="badge"
                           style={{
-                            padding: '5px 10px',
-                            borderRadius: 20,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: entry.is_void ? '#c65b48' : 'var(--green)',
-                            background: entry.is_void
-                              ? 'rgba(198,91,72,0.12)'
-                              : 'rgba(40,160,100,0.12)',
+                            background: isDelivery ? 'rgba(56, 189, 248, 0.15)' : 'rgba(0, 201, 120, 0.15)',
+                            color: isDelivery ? 'var(--cyan)' : 'var(--green-glow)',
+                            borderColor: isDelivery ? 'rgba(56, 189, 248, 0.35)' : 'rgba(0, 201, 120, 0.35)',
                           }}
                         >
-                          {entry.is_void ? 'Voided' : 'Active'}
+                          {isDelivery ? '📤 Delivered' : '📥 Received'}
                         </span>
+                      </td>
+                      <td style={{ fontWeight: 650, color: 'var(--ink)' }}>{partyName}</td>
+                      <td>{grainName}</td>
+                      <td style={{ fontWeight: 700, color: isDelivery ? 'var(--cyan)' : 'var(--green-light)' }}>
+                        {isDelivery ? '-' : '+'}{quantity(qtyVal)}
+                      </td>
+                      <td>{rateVal ? money(rateVal) : '—'}</td>
+                      <td style={{ fontWeight: 750, color: 'var(--gold)' }}>
+                        {amtVal ? money(amtVal) : '—'}
                       </td>
                     </tr>
                   );

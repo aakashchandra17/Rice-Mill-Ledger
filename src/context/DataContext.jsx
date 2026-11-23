@@ -13,6 +13,7 @@ import { useAuth } from './AuthContext';
 import {
   getFarmers,
   createFarmer,
+  updateFarmer,
   recordIntake,
   recordPayment,
 } from '../api';
@@ -74,7 +75,7 @@ export function DataProvider({ children }) {
   }, [token, refreshFarmers]);
 
   // Create a farmer in the backend.
-  const addFarmerRecord = async ({ name, village }) => {
+  const addFarmerRecord = async ({ name, village, associated_commissiondar_id }) => {
     if (!token) {
       throw new Error('Please log in again.');
     }
@@ -87,12 +88,43 @@ export function DataProvider({ children }) {
     }
 
     await createFarmer(
-  {
-    name: farmerName,
-    village: farmerVillage,
-  },
-  token
-);
+      {
+        name: farmerName,
+        village: farmerVillage,
+        associated_commissiondar_id: associated_commissiondar_id
+          ? Number(associated_commissiondar_id)
+          : null,
+      },
+      token
+    );
+
+    await refreshFarmers();
+  };
+
+  // Update a farmer in the backend.
+  const editFarmerRecord = async (farmerId, { name, village, associated_commissiondar_id }) => {
+    if (!token) {
+      throw new Error('Please log in again.');
+    }
+
+    const farmerName = name?.trim();
+    const farmerVillage = village?.trim();
+
+    if (!farmerName || !farmerVillage) {
+      throw new Error('Please enter the farmer name and village.');
+    }
+
+    await updateFarmer(
+      Number(farmerId),
+      {
+        name: farmerName,
+        village: farmerVillage,
+        associated_commissiondar_id: associated_commissiondar_id
+          ? Number(associated_commissiondar_id)
+          : null,
+      },
+      token
+    );
 
     await refreshFarmers();
   };
@@ -232,6 +264,7 @@ export function DataProvider({ children }) {
         addIntake,
         addPayment,
         addFarmerRecord,
+        editFarmerRecord,
         refreshFarmers,
         farmersLoading,
         farmersError,

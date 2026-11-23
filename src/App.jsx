@@ -10,22 +10,34 @@ import {
 import ParticleBackground from './components/ParticleBackground';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
-import { t } from './strings';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
 import MillerRegister from './pages/MillerRegister';
 import CommissiondarRegister from './pages/CommissiondarRegister';
 
+// Miller pages
 import Dashboard from './pages/Dashboard';
 import Farmers from './pages/Farmers';
 import FarmerDetail from './pages/FarmerDetail';
 import RecordIntake from './pages/RecordIntake';
 import RecordPayment from './pages/RecordPayment';
+import MillerCommissiondars from './pages/MillerCommissiondars';
+import MillerLoans from './pages/MillerLoans';
+import MillerExports from './pages/MillerExports';
+import MillerReports from './pages/MillerReports';
+import MillerProfile from './pages/MillerProfile';
 
+// Commissiondar pages
 import CommissiondarDashboard from './pages/CommissiondarDashboard';
-import CommissiondarLoans from './pages/CommissiondarLoans';
+import CommissiondarFarmers from './pages/CommissiondarFarmers';
+import CommissiondarGrainTypes from './pages/CommissiondarGrainTypes';
 import CommissiondarStock from './pages/CommissiondarStock';
+import CommissiondarMills from './pages/CommissiondarMills';
+import CommissiondarLedger from './pages/CommissiondarLedger';
+import CommissiondarLoans from './pages/CommissiondarLoans';
+import CommissiondarReports from './pages/CommissiondarReports';
+import CommissiondarProfile from './pages/CommissiondarProfile';
 
 /* Miller and Commissiondar navigation */
 function TopNavigation({ commissiondhar = false }) {
@@ -34,15 +46,28 @@ function TopNavigation({ commissiondhar = false }) {
   const links = commissiondhar
     ? [
         { to: '/commissiondar', label: 'Dashboard', end: true },
+        { to: '/commissiondar/farmers', label: 'Farmers' },
+        { to: '/commissiondar/grain-types', label: 'Custom Grains' },
+        { to: '/commissiondar/stock', label: 'Stock' },
+        { to: '/commissiondar/mills', label: 'My Mills' },
+        { to: '/commissiondar/ledger', label: 'Mill Ledger' },
         { to: '/commissiondar/loans', label: 'Farmer Loans' },
-        { to: '/commissiondar/stock', label: 'My Stock' },
+        { to: '/commissiondar/reports', label: 'Reports' },
+        { to: '/commissiondar/profile', label: 'Profile' },
       ]
     : [
-        { to: '/dashboard', label: t.dashboard },
-        { to: '/farmers', label: t.farmers },
-        { to: '/intake', label: t.recordIntake },
-        { to: '/payment', label: t.recordPayment },
+        { to: '/dashboard', label: 'Dashboard', end: true },
+        { to: '/farmers', label: 'Farmers' },
+        { to: '/commissiondars', label: 'Contacts' },
+        { to: '/intake', label: 'Intake' },
+        { to: '/payment', label: 'Payments' },
+        { to: '/loans', label: 'Loans' },
+        { to: '/exports', label: 'Exports' },
+        { to: '/reports', label: 'Reports' },
+        { to: '/profile', label: 'Profile' },
       ];
+
+  const profilePath = commissiondhar ? '/commissiondar/profile' : '/profile';
 
   return (
     <header className="top-navigation">
@@ -54,7 +79,9 @@ function TopNavigation({ commissiondhar = false }) {
         <span className="top-brand-mark"></span>
         <span className="top-brand-copy">
           <span className="top-brand-name">GRAIN LEDGER</span>
-          <span className="top-brand-subtitle">RICE MILL MANAGEMENT</span>
+          <span className="top-brand-subtitle">
+            {commissiondhar ? 'COMMISSION AGENT SUITE' : 'RICE MILL MANAGEMENT'}
+          </span>
         </span>
       </NavLink>
 
@@ -74,64 +101,19 @@ function TopNavigation({ commissiondhar = false }) {
       </nav>
 
       <div className="top-nav-account">
-        <div className="top-account-details">
+        <NavLink
+          to={profilePath}
+          className="top-account-details"
+          style={{ textDecoration: 'none', cursor: 'pointer' }}
+          title="View profile and account settings"
+        >
           <span className="top-account-name">
-            {user?.name || (commissiondhar ? 'Commissiondhar' : 'Miller')}
+            {user?.name || (commissiondhar ? 'Commissiondar' : 'Miller')}
           </span>
           <span className="top-account-role">
-            {commissiondhar ? 'Commissiondhar' : 'Miller'}
+            {commissiondhar ? 'Commissiondar' : 'Miller'}
           </span>
-        </div>
-
-        <button
-          type="button"
-          className="top-logout-button"
-          onClick={logout}
-        >
-          Logout
-        </button>
-      </div>
-    </header>
-  );
-}
-
-/* Admin navigation */
-function AdminNavigation() {
-  const { logout, user } = useAuth();
-
-  return (
-    <header className="top-navigation">
-      <NavLink
-        to="/admin"
-        className="top-brand"
-        aria-label="GrainLedger Admin home"
-      >
-        <span className="top-brand-mark"></span>
-        <span className="top-brand-copy">
-          <span className="top-brand-name">GRAIN LEDGER</span>
-          <span className="top-brand-subtitle">ADMINISTRATION</span>
-        </span>
-      </NavLink>
-
-      <nav className="top-nav-links" aria-label="Admin navigation">
-        <NavLink
-          to="/admin"
-          end
-          className={({ isActive }) =>
-            `top-nav-link${isActive ? ' top-nav-link-active' : ''}`
-          }
-        >
-          Dashboard
         </NavLink>
-      </nav>
-
-      <div className="top-nav-account">
-        <div className="top-account-details">
-          <span className="top-account-name">
-            {user?.name || 'Administrator'}
-          </span>
-          <span className="top-account-role">Admin</span>
-        </div>
 
         <button
           type="button"
@@ -156,8 +138,13 @@ function MillerApp() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/farmers" element={<Farmers />} />
           <Route path="/farmers/:id" element={<FarmerDetail />} />
+          <Route path="/commissiondars" element={<MillerCommissiondars />} />
           <Route path="/intake" element={<RecordIntake />} />
           <Route path="/payment" element={<RecordPayment />} />
+          <Route path="/loans" element={<MillerLoans />} />
+          <Route path="/exports" element={<MillerExports />} />
+          <Route path="/reports" element={<MillerReports />} />
+          <Route path="/profile" element={<MillerProfile />} />
 
           <Route
             path="*"
@@ -178,8 +165,14 @@ function CommissiondarApp() {
       <main className="app-main">
         <Routes>
           <Route index element={<CommissiondarDashboard />} />
-          <Route path="loans" element={<CommissiondarLoans />} />
+          <Route path="farmers" element={<CommissiondarFarmers />} />
+          <Route path="grain-types" element={<CommissiondarGrainTypes />} />
           <Route path="stock" element={<CommissiondarStock />} />
+          <Route path="mills" element={<CommissiondarMills />} />
+          <Route path="ledger" element={<CommissiondarLedger />} />
+          <Route path="loans" element={<CommissiondarLoans />} />
+          <Route path="reports" element={<CommissiondarReports />} />
+          <Route path="profile" element={<CommissiondarProfile />} />
 
           <Route
             path="*"
@@ -194,26 +187,6 @@ function CommissiondarApp() {
 /* Admin application */
 function AdminApp() {
   return <AdminDashboard />;
-
-
-  return (
-    <div className="app-layout top-layout">
-      <AdminNavigation />
-
-      <main className="app-main">
-        <section style={{ padding: '30px' }}>
-          <h1>Grain Ledger Admin Dashboard</h1>
-          <p>
-            Welcome, {user?.name || 'Administrator'}.
-          </p>
-          <p>
-            Your administrator account is authenticated.
-            The admin management dashboard will be added next.
-          </p>
-        </section>
-      </main>
-    </div>
-  );
 }
 
 function App() {

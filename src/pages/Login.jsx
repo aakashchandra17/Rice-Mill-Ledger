@@ -552,13 +552,14 @@ export default function Login() {
             padding: '0 16px 6px',
             lineHeight: '1.5',
             marginBottom: '10px',
+            color: 'var(--ink-soft)',
           }}>
             New to Grain Ledger?{' '}
             <Link
               to="/register"
               style={{
-                color: '#053115',
-                fontWeight: 500,
+                color: 'var(--green-glow)',
+                fontWeight: 650,
                 textDecoration: 'none',
               }}
             >
@@ -579,7 +580,7 @@ export default function Login() {
                 style={{
                   border: 'none',
                   background: 'none',
-                  color: '#294536',
+                  color: 'var(--muted)',
                   fontWeight: 600,
                   cursor: 'pointer',
                   fontSize: '14px',
@@ -598,8 +599,8 @@ export default function Login() {
                   gap: '8px',
                   border: 'none',
                   background: 'none',
-                  color: '#294536',
-                  fontWeight: 600,
+                  color: 'var(--gold)',
+                  fontWeight: 650,
                   cursor: 'pointer',
                   fontSize: '14px',
                 }}

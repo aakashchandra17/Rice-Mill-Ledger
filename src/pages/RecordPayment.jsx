@@ -1,8 +1,8 @@
-
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { describeError } from '../api';
+import SearchableSelect from '../components/SearchableSelect';
 import { t } from '../strings';
 
 const rupees = n =>
@@ -27,6 +27,19 @@ export default function RecordPayment() {
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [receipt, setReceipt] = useState(null);
+
+  const visibleFarmers = useMemo(() => {
+    return farmers.filter(f => f.name?.trim().toLowerCase() !== 'string');
+  }, [farmers]);
+
+  const farmerOptions = useMemo(() => {
+    return visibleFarmers.map(f => ({
+      id: f.id,
+      name: f.name,
+      subtitle: `Village: ${f.village || '-'} • Currently Owed: ₹${Number(f.owed || 0).toLocaleString('en-IN')}`,
+      badge: Number(f.owed) > 0 ? `Owed: ₹${Number(f.owed).toLocaleString('en-IN')}` : 'Settled',
+    }));
+  }, [visibleFarmers]);
 
   const selected = farmers.find(
     f => Number(f.id) === Number(farmerId)
@@ -100,6 +113,8 @@ export default function RecordPayment() {
               margin: 0 !important;
               box-shadow: none !important;
               border: 1px solid #999 !important;
+              color: #000 !important;
+              background: #fff !important;
             }
             .no-print {
               display: none !important;
@@ -113,23 +128,23 @@ export default function RecordPayment() {
             maxWidth: 600,
             margin: '0 auto',
             padding: 28,
-            border: '1px solid var(--border, #ccc)',
-            borderRadius: 12,
-            background: 'var(--panel, white)',
-            color: 'var(--text, #222)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            background: 'var(--surface)',
+            color: 'var(--ink)',
           }}
         >
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <h1 style={{ marginBottom: 5 }}>PAYMENT RECEIPT</h1>
             <p style={{ color: 'var(--muted)', margin: 0 }}>
-              Rice Mill Ledger
+              Grain Ledger • Rice Mill Management
             </p>
-            <p style={{ color: 'var(--green)', fontWeight: 700 }}>
+            <p style={{ color: 'var(--green-glow)', fontWeight: 750, marginTop: 4 }}>
               ✓ Payment Recorded Successfully
             </p>
           </div>
 
-          <hr />
+          <hr style={{ borderColor: 'var(--border)', margin: '16px 0' }} />
 
           <div style={{ margin: '18px 0', lineHeight: 2 }}>
             <div>
@@ -143,7 +158,7 @@ export default function RecordPayment() {
             </div>
           </div>
 
-          <hr />
+          <hr style={{ borderColor: 'var(--border)', margin: '16px 0' }} />
 
           <h3>Farmer Details</h3>
 
@@ -152,7 +167,7 @@ export default function RecordPayment() {
             <div><strong>Village:</strong> {receipt.village}</div>
           </div>
 
-          <hr />
+          <hr style={{ borderColor: 'var(--border)', margin: '16px 0' }} />
 
           <h3>Payment Details</h3>
 
@@ -165,9 +180,10 @@ export default function RecordPayment() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 gap: 12,
-                fontSize: 20,
-                fontWeight: 700,
-                marginTop: 12,
+                fontSize: 22,
+                fontWeight: 800,
+                marginTop: 14,
+                color: 'var(--gold)',
               }}
             >
               <span>Amount Paid</span>
@@ -175,10 +191,10 @@ export default function RecordPayment() {
             </div>
           </div>
 
-          <hr />
+          <hr style={{ borderColor: 'var(--border)', margin: '16px 0' }} />
 
-          <p style={{ textAlign: 'center', marginTop: 24 }}>
-            Thank you. This is a computer-generated receipt.
+          <p style={{ textAlign: 'center', marginTop: 24, color: 'var(--muted)', fontSize: '0.85rem' }}>
+            Thank you. This is an authenticated computer-generated receipt.
           </p>
         </div>
 
@@ -192,18 +208,18 @@ export default function RecordPayment() {
             marginTop: 20,
           }}
         >
-          <button type="button" onClick={handlePrint}>
-            Print Receipt
+          <button type="button" className="btn btn-primary" onClick={handlePrint}>
+            🖨️ Print Receipt
           </button>
 
           <Link
             to={`/farmers/${farmerId}`}
-            className="button"
+            className="btn btn-ghost"
           >
             View Farmer Ledger
           </Link>
 
-          <Link to="/farmers">
+          <Link to="/farmers" className="btn btn-ghost">
             Back to Farmers
           </Link>
         </div>
@@ -217,41 +233,54 @@ export default function RecordPayment() {
       onSubmit={handleSubmit}
       noValidate
     >
-      <h1>{t.recordPaymentTitle}</h1>
+      <div style={{ marginBottom: 4 }}>
+        <p className="dashboard-eyebrow">MILLER / PAYMENTS</p>
+        <h1 style={{ margin: '4px 0 6px' }}>{t.recordPaymentTitle}</h1>
+        <p style={{ color: 'var(--muted)', margin: 0, fontSize: '0.9rem' }}>
+          Record farmer payments, reconcile owed balances, and print official receipts.
+        </p>
+      </div>
 
-      <div className={`field ${errors.farmerId ? 'invalid' : ''}`}>
-        <label htmlFor="farmer">{t.selectFarmer}</label>
-
-        <select
-          id="farmer"
+      {/* Name-based Farmer Selection */}
+      <div className="field">
+        <SearchableSelect
+          id="paymentFarmer"
+          label={t.selectFarmer}
+          placeholder="Search and select farmer by name..."
+          options={farmerOptions}
           value={farmerId}
-          onChange={e => setFarmerId(e.target.value)}
+          onChange={id => {
+            setFarmerId(id);
+            setErrors(prev => ({ ...prev, farmerId: undefined }));
+          }}
           disabled={saving}
-        >
-          <option value="">{t.chooseFarmer}</option>
-
-          {farmers
-            .filter(f => f.name?.trim().toLowerCase() !== 'string')
-            .map(f => (
-              <option key={f.id} value={f.id}>
-                {f.name} ({f.village})
-              </option>
-            ))}
-        </select>
-
-        {errors.farmerId && (
-          <div className="field-error">{errors.farmerId}</div>
-        )}
+          required
+          error={errors.farmerId}
+        />
 
         {selected && (
-          <div className="field-warn">
-            {t.currentlyOwed}: {rupees(selected.owed)}
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: 'rgba(251, 191, 36, 0.1)',
+              border: '1px solid rgba(251, 191, 36, 0.3)',
+              color: 'var(--gold)',
+              fontSize: '0.88rem',
+              fontWeight: 650,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <span>{t.currentlyOwed}:</span>
+            <span style={{ fontSize: '1.05rem', fontWeight: 800 }}>{rupees(selected.owed)}</span>
           </div>
         )}
       </div>
 
       <div className={`field ${errors.amount ? 'invalid' : ''}`}>
-        <label htmlFor="amount">{t.paymentAmount}</label>
+        <label htmlFor="amount">{t.paymentAmount} (₹) *</label>
 
         <input
           id="amount"
@@ -259,9 +288,13 @@ export default function RecordPayment() {
           inputMode="decimal"
           min="0"
           step="any"
+          placeholder="e.g. 25000"
           value={amount}
           onKeyDown={blockBadKeys}
-          onChange={e => setAmount(e.target.value)}
+          onChange={e => {
+            setAmount(e.target.value);
+            setErrors(prev => ({ ...prev, amount: undefined }));
+          }}
           disabled={saving}
         />
 
@@ -270,7 +303,18 @@ export default function RecordPayment() {
         )}
 
         {overpay && (
-          <div className="field-warn">{t.warnOverpay}</div>
+          <div
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              background: 'rgba(248, 113, 113, 0.1)',
+              border: '1px solid rgba(248, 113, 113, 0.3)',
+              color: '#fca5a5',
+              fontSize: '0.84rem',
+            }}
+          >
+            ⚠️ {t.warnOverpay} (Payment exceeds owed amount of {rupees(selected.owed)})
+          </div>
         )}
       </div>
 
@@ -297,12 +341,14 @@ export default function RecordPayment() {
         </div>
       )}
 
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
+      <div className="form-actions" style={{ marginTop: 8 }}>
+        <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving ? t.saving : t.save}
         </button>
 
-        <Link to="/farmers">{t.cancel}</Link>
+        <Link to="/farmers" className="btn btn-ghost">
+          {t.cancel}
+        </Link>
       </div>
     </form>
   );

@@ -133,6 +133,7 @@ export default function Dashboard() {
           <p>{error}</p>
           <button
             type="button"
+            className="btn btn-primary"
             onClick={() => window.location.reload()}
           >
             Try again
@@ -329,34 +330,40 @@ export default function Dashboard() {
                   bottom: 4,
                 }}
               >
+                <defs>
+                  <linearGradient id="emeraldBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#00f098" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#00c978" stopOpacity={0.4} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid
-                  stroke="#e8eee9"
+                  stroke="rgba(52, 211, 153, 0.12)"
                   strokeDasharray="4 4"
                   vertical={false}
                 />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: '#718078', fontSize: 12 }}
+                  tick={{ fill: '#849a8d', fontSize: 12 }}
                   axisLine={false}
                   tickLine={false}
                   dy={10}
                 />
                 <YAxis
-                  tick={{ fill: '#718078', fontSize: 12 }}
+                  tick={{ fill: '#849a8d', fontSize: 12 }}
                   axisLine={false}
                   tickLine={false}
                   width={48}
                 />
                 <Tooltip
-                  cursor={{ fill: '#edf4ef' }}
+                  cursor={{ fill: 'rgba(0, 201, 120, 0.08)' }}
                   contentStyle={{
-                    background: '#ffffff',
-                    border: '1px solid #dce8df',
+                    background: 'rgba(10, 22, 16, 0.95)',
+                    border: '1px solid rgba(0, 240, 152, 0.4)',
                     borderRadius: 12,
-                    color: '#183c2b',
-                    boxShadow:
-                      '0 8px 24px rgba(25, 55, 38, 0.08)',
+                    color: '#f8fafc',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
                   }}
+                  itemStyle={{ color: '#00f098' }}
                   formatter={value => [
                     Number(value).toLocaleString('en-IN'),
                     'Intake',
@@ -365,9 +372,9 @@ export default function Dashboard() {
                 <Bar
                   dataKey="intake"
                   name="Intake"
-                  fill="#23734d"
-                  maxBarSize={48}
-                  radius={[6, 6, 0, 0]}
+                  fill="url(#emeraldBar)"
+                  maxBarSize={44}
+                  radius={[8, 8, 0, 0]}
                   isAnimationActive={true}
                   animationDuration={900}
                   animationEasing="ease-out"
