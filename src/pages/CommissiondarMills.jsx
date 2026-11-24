@@ -1,77 +1,97 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getCommissiondarFarmers } from '../api';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  getCommissiondarMills,
+  createCommissiondarMill,
+  updateCommissiondarMill,
+  deleteCommissiondarMill,
+  getCommissiondarMillFarmers,
+  addFarmerToCommissiondarMill,
+  removeFarmerFromCommissiondarMill,
+  getCommissiondarFarmers,
+  describeError,
+} from '../api';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/SearchableSelect';
 
 export default function CommissiondarMills() {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
+
+  const [mills, setMills] = useState([]);
+  const [millsLoading, setMillsLoading] = useState(true);
+  const [includeInactive, setIncludeInactive] = useState(false);
 
   const [farmers, setFarmers] = useState([]);
   const [farmersLoading, setFarmersLoading] = useState(false);
 
-  // Storage key per Commissiondar
-  const storageKey = `commissiondar_mills_${user?.id || user?.phone || 'default'}`;
+  // Mill-to-Farmers mapping cache: { [millId]: [farmerObj] }
+  const [millFarmersMap, setMillFarmersMap] = useState({});
+  const [associationLoading, setAssociationLoading] = useState(false);
 
-  const [mills, setMills] = useState(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    // Sensible defaults if first time
-    return [
-      {
-        id: 'mill_1',
-        name: 'Sri Lakshmi Srinivasa Rice Mill',
-        location: 'Tadepalligudem',
-        contactPerson: 'Venkatesh Rao',
-        phone: '9848012345',
-        isActive: true,
-        associatedFarmerIds: [],
-      },
-    ];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(mills));
-    } catch {}
-  }, [mills, storageKey]);
-
-  // Load Commissiondar's farmers for mapping
-  useEffect(() => {
-    if (!token) return;
-    setFarmersLoading(true);
-
-    getCommissiondarFarmers(token)
-      .then(data => {
-        const list = Array.isArray(data) ? data : data?.farmers || [];
-        setFarmers(list);
-      })
-      .catch(() => {})
-      .finally(() => {
-        setFarmersLoading(false);
-      });
-  }, [token]);
+  // Feedback states
+  const [formError, setFormError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
 
   // Add Mill Form State
   const [millName, setMillName] = useState('');
-  const [location, setLocation] = useState('');
-  const [contactPerson, setContactPerson] = useState('');
-  const [phone, setPhone] = useState('');
-  const [formError, setFormError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Edit Mill State
   const [editingMill, setEditingMill] = useState(null);
   const [editName, setEditName] = useState('');
-  const [editLocation, setEditLocation] = useState('');
-  const [editContact, setEditContact] = useState('');
-  const [editPhone, setEditPhone] = useState('');
 
   // Farmer Association Modal
   const [associatingMill, setAssociatingMill] = useState(null);
   const [selectedFarmerIdToAdd, setSelectedFarmerIdToAdd] = useState('');
+  const [assocError, setAssocError] = useState('');
 
+  // Load Mills from backend
+  const loadMills = useCallback(async () => {
+    if (!token) return;
+    setMillsLoading(true);
+    setFormError('');
+
+    try {
+      const res = await getCommissiondarMills(token, includeInactive);
+      const list = Array.isArray(res) ? res : res?.mills || res?.items || [];
+      setMills(list);
+
+      // Load associated farmers for each mill in background
+      list.forEach(m => {
+        getCommissiondarMillFarmers(m.id, token)
+          .then(fRes => {
+            const fList = Array.isArray(fRes) ? fRes : fRes?.farmers || fRes?.items || [];
+            setMillFarmersMap(prev => ({ ...prev, [m.id]: fList }));
+          })
+          .catch(() => {});
+      });
+    } catch (err) {
+      setFormError(`Failed to load mills: ${describeError(err)}`);
+    } finally {
+      setMillsLoading(false);
+    }
+  }, [token, includeInactive]);
+
+  // Load Commissiondar's Farmers directory
+  const loadFarmers = useCallback(async () => {
+    if (!token) return;
+    setFarmersLoading(true);
+    try {
+      const res = await getCommissiondarFarmers(token);
+      const list = Array.isArray(res) ? res : res?.farmers || res?.items || [];
+      setFarmers(list);
+    } catch {
+      // non-blocking
+    } finally {
+      setFarmersLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadMills();
+    loadFarmers();
+  }, [loadMills, loadFarmers]);
+
+  // Farmer options for SearchableSelect
   const farmerOptions = useMemo(() => {
     return farmers.map(f => ({
       id: f.id,
@@ -81,102 +101,137 @@ export default function CommissiondarMills() {
     }));
   }, [farmers]);
 
-  const handleAddMill = e => {
+  // Add Mill handler
+  const handleAddMill = async e => {
     e.preventDefault();
     setFormError('');
     setSuccess('');
 
-    if (!millName.trim()) {
+    const trimmed = millName.trim();
+    if (!trimmed) {
       setFormError('Please enter a mill name.');
       return;
     }
 
-    const newMill = {
-      id: `mill_${Date.now()}`,
-      name: millName.trim(),
-      location: location.trim() || '',
-      contactPerson: contactPerson.trim() || '',
-      phone: phone.trim() || '',
-      isActive: true,
-      associatedFarmerIds: [],
-    };
-
-    setMills(prev => [newMill, ...prev]);
-    setSuccess(`✓ Mill "${millName.trim()}" added to your account.`);
-    setMillName('');
-    setLocation('');
-    setContactPerson('');
-    setPhone('');
+    setActionBusy(true);
+    try {
+      await createCommissiondarMill({ name: trimmed }, token);
+      setSuccess(`✓ Mill "${trimmed}" created successfully.`);
+      setMillName('');
+      await loadMills();
+    } catch (err) {
+      setFormError(describeError(err));
+    } finally {
+      setActionBusy(false);
+    }
   };
 
-  const handleToggleActive = millId => {
-    setMills(prev =>
-      prev.map(m => (m.id === millId ? { ...m, isActive: !m.isActive } : m))
-    );
-  };
-
+  // Open Edit Modal
   const handleOpenEdit = mill => {
     setEditingMill(mill);
     setEditName(mill.name);
-    setEditLocation(mill.location || '');
-    setEditContact(mill.contactPerson || '');
-    setEditPhone(mill.phone || '');
+    setFormError('');
   };
 
-  const handleSaveEdit = e => {
+  // Save Edit handler
+  const handleSaveEdit = async e => {
     e.preventDefault();
-    if (!editName.trim()) return;
+    if (!editName.trim() || !editingMill) return;
 
-    setMills(prev =>
-      prev.map(m =>
-        m.id === editingMill.id
-          ? {
-              ...m,
-              name: editName.trim(),
-              location: editLocation.trim(),
-              contactPerson: editContact.trim(),
-              phone: editPhone.trim(),
-            }
-          : m
-      )
-    );
-
-    setEditingMill(null);
-    setSuccess('✓ Mill details updated.');
+    setActionBusy(true);
+    try {
+      await updateCommissiondarMill(editingMill.id, { name: editName.trim() }, token);
+      setSuccess(`✓ Mill "${editName.trim()}" updated successfully.`);
+      setEditingMill(null);
+      await loadMills();
+    } catch (err) {
+      setFormError(describeError(err));
+    } finally {
+      setActionBusy(false);
+    }
   };
 
-  const handleAddFarmerToMill = () => {
+  // Deactivate or reactivate mill
+  const handleToggleActive = async mill => {
+    setActionBusy(true);
+    setSuccess('');
+    setFormError('');
+
+    try {
+      if (mill.is_active !== false) {
+        // Deactivate via DELETE or PUT { is_active: false }
+        await deleteCommissiondarMill(mill.id, token);
+        setSuccess(`Mill "${mill.name}" deactivated.`);
+      } else {
+        // Reactivate via PUT { is_active: true }
+        await updateCommissiondarMill(mill.id, { is_active: true }, token);
+        setSuccess(`Mill "${mill.name}" reactivated.`);
+      }
+      await loadMills();
+    } catch (err) {
+      setFormError(describeError(err));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  // Open Association Modal for a mill
+  const handleOpenAssociations = async mill => {
+    setAssociatingMill(mill);
+    setSelectedFarmerIdToAdd('');
+    setAssocError('');
+    setAssociationLoading(true);
+
+    try {
+      const res = await getCommissiondarMillFarmers(mill.id, token);
+      const list = Array.isArray(res) ? res : res?.farmers || res?.items || [];
+      setMillFarmersMap(prev => ({ ...prev, [mill.id]: list }));
+    } catch (err) {
+      setAssocError(`Could not load farmers for this mill: ${describeError(err)}`);
+    } finally {
+      setAssociationLoading(false);
+    }
+  };
+
+  // Associate a farmer to this mill
+  const handleAddFarmerToMill = async () => {
     if (!associatingMill || !selectedFarmerIdToAdd) return;
     const fId = Number(selectedFarmerIdToAdd);
+    setAssocError('');
+    setAssociationLoading(true);
 
-    setMills(prev =>
-      prev.map(m => {
-        if (m.id === associatingMill.id) {
-          const existing = m.associatedFarmerIds || [];
-          if (existing.includes(fId)) return m;
-          return { ...m, associatedFarmerIds: [...existing, fId] };
-        }
-        return m;
-      })
-    );
-
-    setSelectedFarmerIdToAdd('');
+    try {
+      await addFarmerToCommissiondarMill(associatingMill.id, fId, token);
+      // Refresh this mill's farmer list
+      const res = await getCommissiondarMillFarmers(associatingMill.id, token);
+      const list = Array.isArray(res) ? res : res?.farmers || res?.items || [];
+      setMillFarmersMap(prev => ({ ...prev, [associatingMill.id]: list }));
+      setSelectedFarmerIdToAdd('');
+      setSuccess('✓ Farmer associated with mill.');
+    } catch (err) {
+      setAssocError(describeError(err));
+    } finally {
+      setAssociationLoading(false);
+    }
   };
 
-  const handleRemoveFarmerFromMill = (millId, farmerId) => {
-    setMills(prev =>
-      prev.map(m => {
-        if (m.id === millId) {
-          return {
-            ...m,
-            associatedFarmerIds: (m.associatedFarmerIds || []).filter(
-              id => id !== farmerId
-            ),
-          };
-        }
-        return m;
-      })
-    );
+  // Remove farmer association from this mill
+  const handleRemoveFarmerFromMill = async (millId, farmerId) => {
+    setAssocError('');
+    setAssociationLoading(true);
+
+    try {
+      await removeFarmerFromCommissiondarMill(millId, farmerId, token);
+      // Refresh this mill's farmer list
+      const res = await getCommissiondarMillFarmers(millId, token);
+      const list = Array.isArray(res) ? res : res?.farmers || res?.items || [];
+      setMillFarmersMap(prev => ({ ...prev, [millId]: list }));
+      setSuccess('✓ Farmer association removed from mill (farmer remains in directory).');
+    } catch (err) {
+      setAssocError(describeError(err));
+    } finally {
+      setAssociationLoading(false);
+    }
   };
 
   return (
@@ -185,279 +240,391 @@ export default function CommissiondarMills() {
         <p className="dashboard-eyebrow">COMMISSIONDAR / MILL NETWORK</p>
         <h1 style={{ margin: '4px 0 8px' }}>My Mills & Farmer Associations</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Manage your own private directory of rice mills and associate farmers with each mill for stock delivery.
+          Manage your independent directory of rice mills and associate farmers with each mill for stock delivery.
         </p>
       </div>
 
       {success && (
-        <div className="panel" role="status" style={{ padding: 14, marginBottom: 16, color: 'var(--green-light)', borderLeft: '4px solid var(--green)' }}>
+        <div
+          className="panel"
+          role="status"
+          style={{
+            padding: 14,
+            marginBottom: 16,
+            color: 'var(--green-light)',
+            borderLeft: '4px solid var(--green)',
+          }}
+        >
           {success}
         </div>
       )}
 
+      {formError && (
+        <div
+          className="panel form-error"
+          role="alert"
+          style={{ padding: 14, marginBottom: 16 }}
+        >
+          {formError}
+        </div>
+      )}
+
       {/* Add Mill Form */}
-      <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)', marginBottom: 26 }}>
+      <div
+        className="panel"
+        style={{
+          padding: 24,
+          borderRadius: 18,
+          border: '1px solid var(--border)',
+          marginBottom: 26,
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <span style={{ fontSize: 24 }}>🏭</span>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Add New Mill Reference</h2>
+            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Add Rice Mill</h2>
             <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
-              Plain-text mill names in your account. Independent of registered mill accounts.
+              Saved to your authenticated account on the backend. Independent of registered miller accounts.
             </p>
           </div>
         </div>
-
-        {formError && (
-          <p style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
-            {formError}
-          </p>
-        )}
 
         <form onSubmit={handleAddMill}>
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              display: 'flex',
               gap: 16,
-              alignItems: 'end',
-              marginBottom: 16,
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
             }}
           >
-            <div>
-              <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.86rem',
+                  color: '#cbd5e1',
+                  marginBottom: 6,
+                  fontWeight: 650,
+                }}
+              >
                 Mill Name *
               </label>
               <input
                 type="text"
-                placeholder="e.g. Sri Lakshmi Srinivasa Mill"
+                placeholder="e.g. Sri Lakshmi Srinivasa Rice Mill"
                 value={millName}
                 onChange={e => setMillName(e.target.value)}
                 required
+                disabled={actionBusy}
               />
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                Location / Town
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Tadepalligudem"
-                value={location}
-                onChange={e => setLocation(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                Contact Person
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Venkatesh Rao"
-                value={contactPerson}
-                onChange={e => setContactPerson(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                placeholder="10-digit mobile"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-              />
-            </div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={actionBusy || !millName.trim()}
+              style={{ minHeight: 44, padding: '0 24px' }}
+            >
+              {actionBusy ? 'Adding...' : '+ Add Mill to Account'}
+            </button>
           </div>
-
-          <button type="submit" className="btn btn-primary" style={{ minHeight: 44 }}>
-            Add Mill Reference
-          </button>
         </form>
       </div>
 
-      {/* Mills Directory */}
-      <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <div>
-            <h2 style={{ margin: 0 }}>Registered Mill References ({mills.length})</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 0' }}>
-              Select any mill to associate farmers or update contact details.
-            </p>
-          </div>
+      {/* Mills Directory & Actions */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.3rem' }}>
+            Registered Mills ({mills.length})
+          </h2>
+          <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+            Each mill supports multiple farmer associations.
+          </span>
         </div>
 
-        {mills.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 36 }}>
-            <p style={{ fontSize: 32, margin: 0 }}>🏭</p>
-            <h3 style={{ margin: '12px 0 6px' }}>No mills added yet</h3>
-            <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
-              Add your first mill above to associate farmers and record stock deliveries.
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {mills.map(mill => {
-              const associatedFarmers = farmers.filter(f =>
-                (mill.associatedFarmerIds || []).includes(Number(f.id))
-              );
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.88rem', color: 'var(--muted)' }}>
+          <input
+            type="checkbox"
+            checked={includeInactive}
+            onChange={e => setIncludeInactive(e.target.checked)}
+          />
+          Show Deactivated Mills
+        </label>
+      </div>
 
-              return (
-                <div
-                  key={mill.id}
-                  style={{
-                    padding: 20,
-                    borderRadius: 14,
-                    background: 'var(--surface-soft)',
-                    border: '1px solid var(--border)',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      flexWrap: 'wrap',
-                      gap: 12,
-                    }}
-                  >
+      {millsLoading ? (
+        <div className="panel" style={{ padding: 32, textAlign: 'center' }}>
+          <p style={{ margin: 0 }}>Loading your mills from backend...</p>
+        </div>
+      ) : mills.length === 0 ? (
+        <div className="panel" style={{ padding: 36, textAlign: 'center' }}>
+          <span style={{ fontSize: 36, display: 'block', marginBottom: 10 }}>🏭</span>
+          <h3 style={{ margin: '0 0 6px' }}>No Mills Registered Yet</h3>
+          <p style={{ color: 'var(--muted)', margin: 0, fontSize: '0.9rem' }}>
+            Add your first rice mill above to start linking farmers and tracking dispatches.
+          </p>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: 16,
+          }}
+        >
+          {mills.map(mill => {
+            const isActive = mill.is_active !== false;
+            const linkedFarmers = millFarmersMap[mill.id] || [];
+
+            return (
+              <div
+                key={mill.id}
+                className="panel"
+                style={{
+                  padding: 22,
+                  borderRadius: 16,
+                  border: '1px solid var(--border)',
+                  background: isActive ? 'var(--surface)' : 'rgba(255, 255, 255, 0.02)',
+                  opacity: isActive ? 1 : 0.7,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <h3 style={{ margin: 0, fontSize: '1.2rem', color: mill.isActive ? 'var(--ink)' : 'var(--muted)' }}>
-                          {mill.name}
-                        </h3>
-                        <span
-                          className="badge"
-                          style={{
-                            background: mill.isActive ? 'rgba(0, 201, 120, 0.15)' : 'rgba(248, 113, 113, 0.15)',
-                            color: mill.isActive ? 'var(--green-light)' : '#fca5a5',
-                          }}
-                        >
-                          {mill.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-
-                      <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '4px 0 0' }}>
-                        📍 {mill.location || 'Location not specified'} • 👤 {mill.contactPerson || 'Contact'} ({mill.phone || 'No phone'})
-                      </p>
+                      <h3 style={{ margin: '0 0 4px', fontSize: '1.15rem' }}>{mill.name}</h3>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                        Mill Reference #{mill.id}
+                      </span>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-small"
-                        onClick={() => setAssociatingMill(mill)}
-                      >
-                        👥 Manage Farmers ({associatedFarmers.length})
-                      </button>
-
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-small"
-                        onClick={() => handleOpenEdit(mill)}
-                      >
-                        ✎ Edit
-                      </button>
-
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-small"
-                        onClick={() => handleToggleActive(mill.id)}
-                        style={{ color: mill.isActive ? '#fca5a5' : 'var(--green-light)' }}
-                      >
-                        {mill.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </div>
+                    <span
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        background: isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: isActive ? 'var(--green-light)' : '#ef4444',
+                      }}
+                    >
+                      {isActive ? 'ACTIVE' : 'DEACTIVATED'}
+                    </span>
                   </div>
 
-                  {/* Associated Farmers preview tags */}
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(52, 211, 153, 0.1)' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)', marginRight: 8 }}>
-                      Associated Farmers:
-                    </span>
-                    {associatedFarmers.length === 0 ? (
+                  {/* Associated Farmers count & preview */}
+                  <div
+                    style={{
+                      background: 'var(--surface-soft)',
+                      padding: '10px 14px',
+                      borderRadius: 10,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
-                        No farmers mapped to this mill yet. Click "Manage Farmers" to associate.
+                        Associated Farmers:
                       </span>
-                    ) : (
-                      <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                        {associatedFarmers.map(f => (
-                          <span
-                            key={f.id}
-                            className="badge badge-farmer"
-                            style={{ fontSize: '0.76rem' }}
-                          >
-                            {f.name} ({f.village || '-'})
-                          </span>
-                        ))}
+                      <strong style={{ fontSize: '0.95rem', color: 'var(--green-light)' }}>
+                        {linkedFarmers.length}
+                      </strong>
+                    </div>
+
+                    {linkedFarmers.length > 0 && (
+                      <div style={{ marginTop: 6, fontSize: '0.78rem', color: 'var(--ink-soft)' }}>
+                        {linkedFarmers.slice(0, 3).map(f => f.name || f.farmer_name).join(', ')}
+                        {linkedFarmers.length > 3 && ` +${linkedFarmers.length - 3} more`}
                       </div>
                     )}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
-      {/* Manage Farmers Modal */}
-      {associatingMill && (
-        <div className="admin-confirm-overlay" role="dialog" aria-modal="true">
-          <div className="admin-confirm-modal" style={{ maxWidth: 540 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0 }}>Associated Farmers: {associatingMill.name}</h3>
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() => setAssociatingMill(null)}
-              >
-                ✕
-              </button>
-            </div>
-            <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: 18 }}>
-              Farmers linked to this mill can supply stock directly. One farmer can be associated with multiple mills.
-            </p>
+                {/* Card Action Buttons */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ flex: 1, padding: '7px 12px', fontSize: '0.82rem' }}
+                    onClick={() => handleOpenAssociations(mill)}
+                  >
+                    👨‍🌾 Manage Farmers ({linkedFarmers.length})
+                  </button>
 
-            {/* Add Farmer to Mill Combobox */}
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 20 }}>
-              <div style={{ flex: 1 }}>
-                <SearchableSelect
-                  id="addFarmerToMill"
-                  label="Select Farmer by Name"
-                  placeholder="Type farmer name..."
-                  options={farmerOptions.filter(
-                    opt => !(associatingMill.associatedFarmerIds || []).includes(Number(opt.id))
-                  )}
-                  value={selectedFarmerIdToAdd}
-                  onChange={id => setSelectedFarmerIdToAdd(id)}
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ padding: '7px 12px', fontSize: '0.82rem' }}
+                    onClick={() => handleOpenEdit(mill)}
+                  >
+                    ✎ Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{
+                      padding: '7px 12px',
+                      fontSize: '0.82rem',
+                      color: isActive ? '#ef4444' : 'var(--green-light)',
+                    }}
+                    onClick={() => handleToggleActive(mill)}
+                    disabled={actionBusy}
+                  >
+                    {isActive ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* EDIT MILL MODAL */}
+      {editingMill && (
+        <div
+          className="delete-modal-overlay"
+          role="presentation"
+          onMouseDown={e => {
+            if (e.target === e.currentTarget && !actionBusy) setEditingMill(null);
+          }}
+        >
+          <div className="delete-modal" style={{ maxWidth: 440, textAlign: 'left', padding: 24 }}>
+            <h2 style={{ margin: '0 0 14px' }}>Edit Mill Name</h2>
+
+            <form onSubmit={handleSaveEdit}>
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: 6 }}>
+                  Mill Name *
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  required
+                  autoFocus
                 />
               </div>
 
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setEditingMill(null)}
+                  disabled={actionBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={actionBusy || !editName.trim()}
+                >
+                  {actionBusy ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* FARMER ASSOCIATION MODAL */}
+      {associatingMill && (
+        <div
+          className="delete-modal-overlay"
+          role="presentation"
+          onMouseDown={e => {
+            if (e.target === e.currentTarget && !associationLoading) setAssociatingMill(null);
+          }}
+        >
+          <div
+            className="delete-modal"
+            style={{ maxWidth: 560, width: '100%', textAlign: 'left', padding: 26 }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>
+                  Farmers Associated with {associatingMill.name}
+                </h2>
+                <p style={{ color: 'var(--muted)', fontSize: 13, margin: '2px 0 0' }}>
+                  Link farmers from your directory. A farmer can belong to multiple mills.
+                </p>
+              </div>
               <button
                 type="button"
-                className="btn btn-primary"
-                onClick={handleAddFarmerToMill}
-                disabled={!selectedFarmerIdToAdd}
-                style={{ minHeight: 42 }}
+                className="btn btn-ghost"
+                onClick={() => setAssociatingMill(null)}
+                style={{ fontSize: 20, padding: '2px 8px' }}
               >
-                + Link Farmer
+                ×
               </button>
             </div>
 
+            {assocError && (
+              <div className="panel form-error" role="alert" style={{ padding: 10, marginBottom: 14 }}>
+                {assocError}
+              </div>
+            )}
+
+            {/* Associate New Farmer Section */}
+            <div
+              style={{
+                background: 'var(--surface-soft)',
+                padding: 16,
+                borderRadius: 14,
+                marginBottom: 20,
+              }}
+            >
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: 8, fontWeight: 650 }}>
+                Link a Farmer to this Mill:
+              </label>
+
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <SearchableSelect
+                    options={farmerOptions}
+                    value={selectedFarmerIdToAdd}
+                    onChange={setSelectedFarmerIdToAdd}
+                    placeholder="Search farmer by name or village..."
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleAddFarmerToMill}
+                  disabled={associationLoading || !selectedFarmerIdToAdd}
+                  style={{ minHeight: 42, padding: '0 16px', whiteSpace: 'nowrap' }}
+                >
+                  {associationLoading ? 'Adding...' : '+ Associate'}
+                </button>
+              </div>
+            </div>
+
             {/* Currently Associated Farmers List */}
-            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-              <h4 style={{ fontSize: '0.92rem', color: '#cbd5e1', marginBottom: 8 }}>
-                Linked Farmers ({(associatingMill.associatedFarmerIds || []).length})
-              </h4>
-              {(associatingMill.associatedFarmerIds || []).length === 0 ? (
-                <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No farmers currently linked.</p>
+            <div>
+              <h3 style={{ margin: '0 0 10px', fontSize: '0.95rem', color: 'var(--muted)' }}>
+                CURRENTLY LINKED FARMERS ({(millFarmersMap[associatingMill.id] || []).length})
+              </h3>
+
+              {associationLoading && (
+                <p style={{ color: 'var(--muted)', fontSize: 13 }}>Updating associations...</p>
+              )}
+
+              {(millFarmersMap[associatingMill.id] || []).length === 0 ? (
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', background: 'rgba(255,255,255,0.02)', borderRadius: 10 }}>
+                  No farmers currently linked to this mill. Select a farmer above to associate.
+                </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(associatingMill.associatedFarmerIds || []).map(fId => {
-                    const farmerObj = farmers.find(f => Number(f.id) === Number(fId));
+                <div style={{ maxHeight: 240, overflowY: 'auto', display: 'grid', gap: 8 }}>
+                  {(millFarmersMap[associatingMill.id] || []).map(f => {
+                    const fId = f.id || f.farmer_id;
+                    const fName = f.name || f.farmer_name;
+
                     return (
                       <div
                         key={fId}
@@ -465,30 +632,35 @@ export default function CommissiondarMills() {
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          padding: '8px 12px',
+                          padding: '10px 14px',
                           borderRadius: 8,
                           background: 'var(--surface-soft)',
+                          border: '1px solid var(--border)',
                         }}
                       >
-                        <span style={{ fontSize: '0.9rem', color: 'var(--ink)' }}>
-                          <strong>{farmerObj?.name || `Farmer #${fId}`}</strong>{' '}
-                          <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>
-                            ({farmerObj?.village || 'No village'})
-                          </span>
-                        </span>
+                        <div>
+                          <strong style={{ fontSize: '0.92rem' }}>{fName}</strong>
+                          {f.village && (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--muted)', marginLeft: 8 }}>
+                              ({f.village})
+                            </span>
+                          )}
+                        </div>
 
                         <button
                           type="button"
-                          onClick={() => handleRemoveFarmerFromMill(associatingMill.id, fId)}
+                          className="btn btn-ghost"
                           style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#fca5a5',
-                            cursor: 'pointer',
-                            fontSize: '0.82rem',
+                            fontSize: '0.78rem',
+                            color: '#ef4444',
+                            padding: '4px 10px',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
                           }}
+                          onClick={() => handleRemoveFarmerFromMill(associatingMill.id, fId)}
+                          disabled={associationLoading}
+                          title="Remove association (does not delete farmer from directory)"
                         >
-                          ✕ Unlink
+                          ✕ Disassociate
                         </button>
                       </div>
                     );
@@ -500,86 +672,12 @@ export default function CommissiondarMills() {
             <div style={{ marginTop: 22, textAlign: 'right' }}>
               <button
                 type="button"
-                className="btn btn-ghost"
+                className="btn btn-secondary"
                 onClick={() => setAssociatingMill(null)}
               >
                 Done
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Mill Modal */}
-      {editingMill && (
-        <div className="admin-confirm-overlay" role="dialog" aria-modal="true">
-          <div className="admin-confirm-modal" style={{ maxWidth: 460 }}>
-            <h3>Edit Mill Reference</h3>
-
-            <form onSubmit={handleSaveEdit}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4, color: '#cbd5e1' }}>
-                    Mill Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4, color: '#cbd5e1' }}>
-                    Location
-                  </label>
-                  <input
-                    type="text"
-                    value={editLocation}
-                    onChange={e => setEditLocation(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4, color: '#cbd5e1' }}>
-                    Contact Person
-                  </label>
-                  <input
-                    type="text"
-                    value={editContact}
-                    onChange={e => setEditContact(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4, color: '#cbd5e1' }}>
-                    Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={editPhone}
-                    onChange={e => setEditPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="admin-confirm-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => setEditingMill(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

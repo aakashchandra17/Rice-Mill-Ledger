@@ -20,6 +20,8 @@ import CommissiondarRegister from './pages/CommissiondarRegister';
 import Dashboard from './pages/Dashboard';
 import Farmers from './pages/Farmers';
 import FarmerDetail from './pages/FarmerDetail';
+import MillerGrains from './pages/MillerGrains';
+import MillerInventory from './pages/MillerInventory';
 import RecordIntake from './pages/RecordIntake';
 import RecordPayment from './pages/RecordPayment';
 import MillerCommissiondars from './pages/MillerCommissiondars';
@@ -57,6 +59,8 @@ function TopNavigation({ commissiondhar = false }) {
       ]
     : [
         { to: '/dashboard', label: 'Dashboard', end: true },
+        { to: '/grains', label: 'Grains' },
+        { to: '/inventory', label: 'Inventory' },
         { to: '/farmers', label: 'Farmers' },
         { to: '/commissiondars', label: 'Contacts' },
         { to: '/intake', label: 'Intake' },
@@ -136,6 +140,8 @@ function MillerApp() {
       <main className="app-main">
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/grains" element={<MillerGrains />} />
+          <Route path="/inventory" element={<MillerInventory />} />
           <Route path="/farmers" element={<Farmers />} />
           <Route path="/farmers/:id" element={<FarmerDetail />} />
           <Route path="/commissiondars" element={<MillerCommissiondars />} />

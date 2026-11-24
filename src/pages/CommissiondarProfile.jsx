@@ -1,22 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getCommissiondarFarmers, getCommissiondarLoans } from '../api';
+import {
+  getCommissiondarFarmers,
+  getCommissiondarLoans,
+  getCommissiondarMills,
+} from '../api';
 
 export default function CommissiondarProfile() {
   const { user, token, logout } = useAuth();
   const [farmersCount, setFarmersCount] = useState(0);
   const [activeLoansCount, setActiveLoansCount] = useState(0);
-
-  const userKey = user?.id || user?.phone || 'default';
-  const millsStorageKey = `commissiondar_mills_${userKey}`;
-  const millsCount = (() => {
-    try {
-      const saved = localStorage.getItem(millsStorageKey);
-      return saved ? JSON.parse(saved).filter(m => m.isActive !== false).length : 0;
-    } catch {
-      return 0;
-    }
-  })();
+  const [millsCount, setMillsCount] = useState(0);
 
   useEffect(() => {
     if (!token) return;
@@ -33,6 +27,13 @@ export default function CommissiondarProfile() {
         const list = Array.isArray(res) ? res : res?.loans ?? [];
         const active = list.filter(l => Number(l.outstanding_balance ?? l.amount ?? 0) > 0);
         setActiveLoansCount(active.length);
+      })
+      .catch(() => {});
+
+    getCommissiondarMills(token, true)
+      .then(res => {
+        const list = Array.isArray(res) ? res : res?.mills ?? [];
+        setMillsCount(list.length);
       })
       .catch(() => {});
   }, [token]);

@@ -72,10 +72,16 @@ export default function RecordIntake() {
     getItems(token)
       .then(data => {
         if (!active) return;
-        const list = Array.isArray(data?.items) ? data.items : [];
-        setItems(list);
-        if (list.length > 0 && !itemId) {
-          setItemId(list[0].id);
+        const rawList = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.items)
+          ? data.items
+          : [];
+        // Only active grain varieties can be selected for new intake
+        const activeList = rawList.filter(item => item.is_active !== false);
+        setItems(activeList);
+        if (activeList.length > 0 && !itemId) {
+          setItemId(activeList[0].id);
         }
       })
       .catch(err => {

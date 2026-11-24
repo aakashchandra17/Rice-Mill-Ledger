@@ -172,6 +172,27 @@ export async function verifyOtp(challengeId, msg91AccessToken) {
 export const getItems = token =>
   request('/items', { token });
 
+export const createItem = (data, token) =>
+  request('/items', { method: 'POST', body: data, token });
+
+export const updateItem = (itemId, data, token) =>
+  request(`/items/${itemId}`, { method: 'PUT', body: data, token });
+
+export const deactivateItem = (itemId, token) =>
+  request(`/items/${itemId}/deactivate`, { method: 'PATCH', token });
+
+export const getMillerInventory = token =>
+  request('/inventory', { token });
+
+export const getMillerInventoryMovements = (
+  itemId,
+  { limit = 100, offset = 0 } = {},
+  token
+) =>
+  request(`/inventory/${itemId}/movements?limit=${limit}&offset=${offset}`, {
+    token,
+  });
+
 export const getFarmers = token =>
   request('/farmers', { token });
 
@@ -281,6 +302,66 @@ export const getCommissiondarGrainTypes = token =>
 export const createCommissiondarGrainType = (data, token) =>
   request('/commissiondar/grain-types', { method: 'POST', body: data, token });
 
+// Commissiondar Mills
+export const getCommissiondarMills = (token, includeInactive = false) =>
+  request(`/commissiondar/mills${includeInactive ? '?include_inactive=true' : ''}`, {
+    token,
+  });
+
+export const createCommissiondarMill = (data, token) =>
+  request('/commissiondar/mills', { method: 'POST', body: data, token });
+
+export const updateCommissiondarMill = (millId, data, token) =>
+  request(`/commissiondar/mills/${millId}`, {
+    method: 'PUT',
+    body: data,
+    token,
+  });
+
+export const deleteCommissiondarMill = (millId, token) =>
+  request(`/commissiondar/mills/${millId}`, {
+    method: 'DELETE',
+    token,
+  });
+
+// Commissiondar Farmer-to-Mill Associations
+export const getCommissiondarMillFarmers = (millId, token) =>
+  request(`/commissiondar/mills/${millId}/farmers`, { token });
+
+export const addFarmerToCommissiondarMill = (millId, farmerId, token) =>
+  request(`/commissiondar/mills/${millId}/farmers/${farmerId}`, {
+    method: 'POST',
+    token,
+  });
+
+export const removeFarmerFromCommissiondarMill = (millId, farmerId, token) =>
+  request(`/commissiondar/mills/${millId}/farmers/${farmerId}`, {
+    method: 'DELETE',
+    token,
+  });
+
+// Commissiondar Mill Commission Ledger
+export const getCommissiondarMillCommissions = (millId, token) =>
+  request(`/commissiondar/mills/${millId}/commissions`, { token });
+
+export const createCommissiondarMillCommission = (millId, data, token) =>
+  request(`/commissiondar/mills/${millId}/commissions`, {
+    method: 'POST',
+    body: data,
+    token,
+  });
+
+// Commissiondar Commission Receipts
+export const getCommissiondarCommissionReceipts = (commissionId, token) =>
+  request(`/commissiondar/commissions/${commissionId}/receipts`, { token });
+
+export const createCommissiondarCommissionReceipt = (commissionId, data, token) =>
+  request(`/commissiondar/commissions/${commissionId}/receipts`, {
+    method: 'POST',
+    body: data,
+    token,
+  });
+
 // Registration APIs
 export const registerMiller = ({
   name,
@@ -356,6 +437,10 @@ export function describeError(err) {
 
   if (err?.status === 403) {
     return 'You are not allowed to access this section.';
+  }
+
+  if (err?.status === 409) {
+    return err?.message || 'A record with this name or identifier already exists.';
   }
 
   return err?.message || 'Something went wrong. Please try again.';

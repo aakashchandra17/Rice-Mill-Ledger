@@ -1,224 +1,385 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import {
+  getCommissiondarMills,
+  getCommissiondarMillCommissions,
+  createCommissiondarMillCommission,
+  getCommissiondarCommissionReceipts,
+  createCommissiondarCommissionReceipt,
+  describeError,
+} from '../api';
 import SearchableSelect from '../components/SearchableSelect';
 
 const rupees = n => '₹' + Number(n || 0).toLocaleString('en-IN');
 
 export default function CommissiondarLedger() {
-  const { user } = useAuth();
+  const { token } = useAuth();
 
-  const userKey = user?.id || user?.phone || 'default';
-  const millsStorageKey = `commissiondar_mills_${userKey}`;
-  const ledgerStorageKey = `commissiondar_ledger_${userKey}`;
+  const [mills, setMills] = useState([]);
+  const [millsLoading, setMillsLoading] = useState(true);
 
-  // Load My Mills
-  const mills = useMemo(() => {
-    try {
-      const saved = localStorage.getItem(millsStorageKey);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  }, [millsStorageKey]);
+  // Map of millId -> array of commissions: [{ id, commission_amount, earned_at, note, receipts: [...] }]
+  const [millCommissionsMap, setMillCommissionsMap] = useState({});
+  const [loadingCommissions, setLoadingCommissions] = useState(false);
 
-  const millOptions = useMemo(() => {
-    return mills
-      .filter(m => m.isActive !== false)
-      .map(m => ({
-        id: m.name,
-        name: m.name,
-        subtitle: m.location ? `Location: ${m.location}` : 'Rice Mill',
-        badge: 'Mill',
-      }));
-  }, [mills]);
-
-  // Load Ledger records: array of { id, type: 'accrual'|'receipt', millName, amount, date, notes, rate, quantity }
-  const [entries, setEntries] = useState(() => {
-    try {
-      const saved = localStorage.getItem(ledgerStorageKey);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(ledgerStorageKey, JSON.stringify(entries));
-    } catch {}
-  }, [entries, ledgerStorageKey]);
-
-  // Active Tab: 'recordAccrual' | 'recordReceipt'
+  // Form states: 'accrual' | 'receipt'
   const [formType, setFormType] = useState('accrual');
-  const [selectedMill, setSelectedMill] = useState('');
+  const [selectedMillId, setSelectedMillId] = useState('');
+  const [selectedCommissionId, setSelectedCommissionId] = useState('');
   const [amount, setAmount] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [rate, setRate] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
+
+  // Status feedback
+  const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
-  // Auto-calculate amount for accrual if qty and rate provided
-  useEffect(() => {
-    if (formType === 'accrual' && quantity && rate) {
-      const calc = Number(quantity) * Number(rate);
-      if (!Number.isNaN(calc) && calc > 0) {
-        setAmount(String(calc));
-      }
+  // Load mills
+  const loadMills = useCallback(async () => {
+    if (!token) return;
+    setMillsLoading(true);
+    try {
+      const res = await getCommissiondarMills(token, false);
+      const list = Array.isArray(res) ? res : res?.mills || res?.items || [];
+      setMills(list);
+      return list;
+    } catch (err) {
+      setError(`Failed to load mills: ${describeError(err)}`);
+      return [];
+    } finally {
+      setMillsLoading(false);
     }
-  }, [quantity, rate, formType]);
+  }, [token]);
 
-  // Mill-wise metrics
-  const millLedgers = useMemo(() => {
-    const summary = {};
+  // Load commissions & receipts for all mills
+  const loadAllCommissions = useCallback(
+    async currentMills => {
+      if (!token || !currentMills || currentMills.length === 0) return;
+      setLoadingCommissions(true);
 
-    entries.forEach(entry => {
-      const mName = entry.millName || 'Other Mill';
-      if (!summary[mName]) {
-        summary[mName] = {
-          millName: mName,
-          accrued: 0,
-          received: 0,
-          pending: 0,
-          entries: [],
-        };
-      }
+      const newMap = {};
+      await Promise.allSettled(
+        currentMills.map(async mill => {
+          try {
+            const commRes = await getCommissiondarMillCommissions(mill.id, token);
+            const commList = Array.isArray(commRes)
+              ? commRes
+              : commRes?.commissions || commRes?.items || [];
 
-      const amt = Number(entry.amount || 0);
-      if (entry.type === 'accrual') {
-        summary[mName].accrued += amt;
-      } else {
-        summary[mName].received += amt;
-      }
-      summary[mName].pending = summary[mName].accrued - summary[mName].received;
-      summary[mName].entries.push(entry);
+            // For each commission, fetch its receipts
+            const commissionsWithReceipts = await Promise.all(
+              commList.map(async comm => {
+                try {
+                  const rRes = await getCommissiondarCommissionReceipts(comm.id, token);
+                  const rList = Array.isArray(rRes)
+                    ? rRes
+                    : rRes?.receipts || rRes?.items || [];
+                  return { ...comm, receipts: rList };
+                } catch {
+                  return { ...comm, receipts: [] };
+                }
+              })
+            );
+
+            newMap[mill.id] = commissionsWithReceipts;
+          } catch {
+            newMap[mill.id] = [];
+          }
+        })
+      );
+
+      setMillCommissionsMap(newMap);
+      setLoadingCommissions(false);
+    },
+    [token]
+  );
+
+  const refreshLedger = useCallback(async () => {
+    const loadedMills = await loadMills();
+    if (loadedMills && loadedMills.length > 0) {
+      await loadAllCommissions(loadedMills);
+    }
+  }, [loadMills, loadAllCommissions]);
+
+  useEffect(() => {
+    refreshLedger();
+  }, [refreshLedger]);
+
+  // Options for Mill dropdown
+  const millOptions = useMemo(() => {
+    return mills
+      .filter(m => m.is_active !== false)
+      .map(m => ({
+        id: String(m.id),
+        name: m.name,
+        subtitle: `Mill #${m.id}`,
+        badge: 'Partner Mill',
+      }));
+  }, [mills]);
+
+  // Available commissions for receipt recording under selected mill
+  const availableCommissionsForMill = useMemo(() => {
+    if (!selectedMillId) return [];
+    const list = millCommissionsMap[selectedMillId] || [];
+    return list.map(c => {
+      const earned = Number(c.commission_amount || c.amount || 0);
+      const received = (c.receipts || []).reduce(
+        (sum, r) => sum + Number(r.amount || 0),
+        0
+      );
+      const pending = Math.max(0, earned - received);
+      return {
+        id: String(c.id),
+        name: `Commission #${c.id} - ${rupees(earned)} (${c.earned_at || 'Date N/A'})`,
+        subtitle: `Pending: ${rupees(pending)} | Received: ${rupees(received)}`,
+        badge: pending <= 0 ? 'Settled' : 'Pending',
+        pending,
+      };
     });
+  }, [selectedMillId, millCommissionsMap]);
 
-    return Object.values(summary);
-  }, [entries]);
-
+  // Global totals computation
   const totals = useMemo(() => {
-    let accrued = 0;
+    let earned = 0;
     let received = 0;
 
-    entries.forEach(entry => {
-      const amt = Number(entry.amount || 0);
-      if (entry.type === 'accrual') accrued += amt;
-      else received += amt;
+    Object.values(millCommissionsMap).forEach(commList => {
+      commList.forEach(c => {
+        const amt = Number(c.commission_amount || c.amount || 0);
+        earned += amt;
+        (c.receipts || []).forEach(r => {
+          received += Number(r.amount || 0);
+        });
+      });
     });
 
     return {
-      accrued,
+      earned,
       received,
-      pending: accrued - received,
+      pending: Math.max(0, earned - received),
     };
-  }, [entries]);
+  }, [millCommissionsMap]);
 
-  const handleSubmit = e => {
+  // Per-mill ledger breakdown
+  const millSummaries = useMemo(() => {
+    return mills.map(mill => {
+      const commList = millCommissionsMap[mill.id] || [];
+      let millEarned = 0;
+      let millReceived = 0;
+
+      commList.forEach(c => {
+        millEarned += Number(c.commission_amount || c.amount || 0);
+        (c.receipts || []).forEach(r => {
+          millReceived += Number(r.amount || 0);
+        });
+      });
+
+      return {
+        millId: mill.id,
+        millName: mill.name,
+        isActive: mill.is_active !== false,
+        earned: millEarned,
+        received: millReceived,
+        pending: Math.max(0, millEarned - millReceived),
+        commissions: commList,
+      };
+    });
+  }, [mills, millCommissionsMap]);
+
+  // Form submission handler
+  const handleSubmit = async e => {
     e.preventDefault();
     setError('');
     setSuccess('');
 
-    if (!selectedMill) {
-      setError('Please select a mill name.');
+    if (!selectedMillId) {
+      setError('Please select a partner rice mill.');
       return;
     }
 
     const amt = Number(amount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      setError('Please enter a valid amount.');
+      setError('Please enter a valid positive amount.');
       return;
     }
 
-    const newEntry = {
-      id: `ledg_${Date.now()}`,
-      type: formType,
-      millName: selectedMill,
-      amount: amt,
-      quantity: quantity ? Number(quantity) : null,
-      rate: rate ? Number(rate) : null,
-      notes: notes.trim() || (formType === 'accrual' ? 'Commission Accrual' : 'Payment Received'),
-      date: new Date().toLocaleDateString('en-IN'),
-    };
+    setBusy(true);
 
-    setEntries(prev => [newEntry, ...prev]);
-    setSuccess(`✓ ${formType === 'accrual' ? 'Commission accrual' : 'Receipt'} of ${rupees(amt)} recorded.`);
-    setAmount('');
-    setQuantity('');
-    setRate('');
-    setNotes('');
+    try {
+      if (formType === 'accrual') {
+        // Record commission earned from mill
+        const payload = {
+          commission_amount: amt,
+          earned_at: date || new Date().toISOString().slice(0, 10),
+          note: notes.trim() || undefined,
+        };
+
+        await createCommissiondarMillCommission(selectedMillId, payload, token);
+        setSuccess(`✓ Commission of ${rupees(amt)} recorded against mill.`);
+      } else {
+        // Record receipt against a commission
+        let targetCommissionId = selectedCommissionId;
+
+        // If user didn't pick a specific commission, auto-pick the first commission with pending balance
+        if (!targetCommissionId) {
+          const commList = millCommissionsMap[selectedMillId] || [];
+          const candidate = commList.find(c => {
+            const e = Number(c.commission_amount || c.amount || 0);
+            const r = (c.receipts || []).reduce((s, x) => s + Number(x.amount || 0), 0);
+            return e - r > 0;
+          }) || commList[0];
+
+          if (candidate) {
+            targetCommissionId = candidate.id;
+          } else {
+            throw new Error(
+              'No commission record found for this mill. Please record a commission earned first before logging a receipt.'
+            );
+          }
+        }
+
+        const payload = {
+          amount: amt,
+          received_at: date || new Date().toISOString().slice(0, 10),
+          note: notes.trim() || undefined,
+        };
+
+        await createCommissiondarCommissionReceipt(targetCommissionId, payload, token);
+        setSuccess(`✓ Payment receipt of ${rupees(amt)} recorded successfully.`);
+      }
+
+      setAmount('');
+      setNotes('');
+      setSelectedCommissionId('');
+      await refreshLedger();
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="commissiondar-ledger-page">
+    <div className="commissiondar-ledger-page" style={{ maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
-        <p className="dashboard-eyebrow">COMMISSIONDAR / FINANCIAL LEDGER</p>
+        <p className="dashboard-eyebrow">COMMISSIONDAR / FINANCIAL RECONCILIATION</p>
         <h1 style={{ margin: '4px 0 8px' }}>Manual Mill Commission Ledger</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Record commission earned from rice mills, track payment receipts, and reconcile pending balances.
+          Record commission earned from rice mills, record payment receipts, and reconcile pending dues via authenticated backend records.
         </p>
       </div>
 
       {success && (
-        <div className="panel" role="status" style={{ padding: 14, marginBottom: 16, color: 'var(--green-light)', borderLeft: '4px solid var(--green)' }}>
+        <div
+          className="panel"
+          role="status"
+          style={{
+            padding: 14,
+            marginBottom: 16,
+            color: 'var(--green-light)',
+            borderLeft: '4px solid var(--green)',
+          }}
+        >
           {success}
         </div>
       )}
 
       {error && (
-        <div className="panel form-error" role="alert" style={{ padding: 14, marginBottom: 16 }}>
+        <div
+          className="panel form-error"
+          role="alert"
+          style={{ padding: 14, marginBottom: 16 }}
+        >
           {error}
         </div>
       )}
 
-      {/* KPI Cards */}
+      {/* Top 3 Summary Cards */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
           gap: 16,
-          marginBottom: 26,
+          marginBottom: 24,
         }}
       >
-        <div className="panel" style={{ padding: 22, borderRadius: 16, border: '1px solid var(--border)' }}>
-          <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 6px', fontWeight: 600 }}>Total Commission Earned</p>
-          <h2 style={{ margin: '0 0 4px', fontSize: '1.9rem', color: 'var(--gold)' }}>{rupees(totals.accrued)}</h2>
-          <p style={{ color: 'var(--muted)', fontSize: 12, margin: 0 }}>Accrued from all mill deliveries</p>
+        <div className="panel" style={{ padding: 22, borderRadius: 16 }}>
+          <div style={{ color: 'var(--muted)', fontSize: '0.82rem', marginBottom: 4 }}>
+            TOTAL COMMISSION EARNED
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--gold)' }}>
+            {rupees(totals.earned)}
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: 4 }}>
+            Total accrued across all mills
+          </div>
         </div>
 
-        <div className="panel" style={{ padding: 22, borderRadius: 16, border: '1px solid var(--border)' }}>
-          <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 6px', fontWeight: 600 }}>Total Receipts Collected</p>
-          <h2 style={{ margin: '0 0 4px', fontSize: '1.9rem', color: 'var(--green-light)' }}>{rupees(totals.received)}</h2>
-          <p style={{ color: 'var(--muted)', fontSize: 12, margin: 0 }}>Payments settled by mills</p>
+        <div className="panel" style={{ padding: 22, borderRadius: 16 }}>
+          <div style={{ color: 'var(--muted)', fontSize: '0.82rem', marginBottom: 4 }}>
+            TOTAL COMMISSION RECEIVED
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--green-light)' }}>
+            {rupees(totals.received)}
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: 4 }}>
+            Payments collected from mills
+          </div>
         </div>
 
-        <div className="panel" style={{ padding: 22, borderRadius: 16, border: '1px solid var(--border)' }}>
-          <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 6px', fontWeight: 600 }}>Pending Commission Due</p>
-          <h2 style={{ margin: '0 0 4px', fontSize: '1.9rem', color: totals.pending > 0 ? '#fca5a5' : 'var(--green-light)' }}>
+        <div className="panel" style={{ padding: 22, borderRadius: 16 }}>
+          <div style={{ color: 'var(--muted)', fontSize: '0.82rem', marginBottom: 4 }}>
+            NET PENDING COMMISSION
+          </div>
+          <div
+            style={{
+              fontSize: '1.8rem',
+              fontWeight: 800,
+              color: totals.pending > 0 ? '#ef4444' : 'var(--green-light)',
+            }}
+          >
             {rupees(totals.pending)}
-          </h2>
-          <p style={{ color: 'var(--muted)', fontSize: 12, margin: 0 }}>Outstanding to be recovered</p>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: 4 }}>
+            Outstanding balance due from mills
+          </div>
         </div>
       </div>
 
-      {/* Entry Recording Form */}
-      <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)', marginBottom: 26 }}>
-        {/* Toggle between Accrual vs Receipt */}
+      {/* Recording Form Panel */}
+      <div
+        className="panel"
+        style={{
+          padding: 24,
+          borderRadius: 18,
+          border: '1px solid var(--border)',
+          marginBottom: 26,
+        }}
+      >
         <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
           <button
             type="button"
-            className={formType === 'accrual' ? 'btn btn-primary' : 'btn btn-ghost'}
-            onClick={() => setFormType('accrual')}
+            className={`btn ${formType === 'accrual' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => {
+              setFormType('accrual');
+              setError('');
+              setSuccess('');
+            }}
           >
-            + Record Commission Earned
+            📈 Record Commission Earned
           </button>
 
           <button
             type="button"
-            className={formType === 'receipt' ? 'btn btn-primary' : 'btn btn-ghost'}
-            onClick={() => setFormType('receipt')}
+            className={`btn ${formType === 'receipt' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => {
+              setFormType('receipt');
+              setError('');
+              setSuccess('');
+            }}
           >
-            ✓ Record Commission Receipt Received
+            💰 Record Payment Receipt
           </button>
         </div>
 
@@ -228,195 +389,220 @@ export default function CommissiondarLedger() {
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: 16,
-              alignItems: 'end',
               marginBottom: 16,
             }}
           >
+            {/* Select Mill */}
             <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                Partner Rice Mill *
+              </label>
               <SearchableSelect
-                id="ledgerMill"
-                label="Select Rice Mill *"
-                placeholder="Search mill name..."
                 options={millOptions}
-                value={selectedMill}
-                onChange={name => setSelectedMill(name)}
-                required
+                value={selectedMillId}
+                onChange={val => {
+                  setSelectedMillId(val);
+                  setSelectedCommissionId('');
+                }}
+                placeholder="Search mill name..."
               />
             </div>
 
-            {formType === 'accrual' ? (
-              <>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                    Quantity (Bags/Units)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="e.g. 100"
-                    value={quantity}
-                    onChange={e => setQuantity(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                    Commission Rate (₹ per unit)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="e.g. 5"
-                    value={rate}
-                    onChange={e => setRate(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                    Total Commission Amount (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="any"
-                    placeholder="e.g. 500"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    required
-                  />
-                </div>
-              </>
-            ) : (
+            {/* If Receipt: select specific commission (optional) */}
+            {formType === 'receipt' && (
               <div>
-                <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                  Receipt Amount Received (₹) *
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                  Apply to Commission Record (Optional)
                 </label>
-                <input
-                  type="number"
-                  min="1"
-                  step="any"
-                  placeholder="e.g. 10000"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  required
+                <SearchableSelect
+                  options={availableCommissionsForMill}
+                  value={selectedCommissionId}
+                  onChange={setSelectedCommissionId}
+                  placeholder={
+                    selectedMillId
+                      ? 'Select commission record or leave blank for auto-match'
+                      : 'First select a mill above'
+                  }
                 />
               </div>
             )}
 
+            {/* Amount */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
-                Notes / Reference
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                {formType === 'accrual' ? 'Commission Amount (₹) *' : 'Receipt Amount (₹) *'}
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="e.g. 5000"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                required
+                disabled={busy}
+              />
+            </div>
+
+            {/* Date */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+                Date (YYYY-MM-DD)
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                disabled={busy}
+              />
+            </div>
+
+            {/* Notes */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: 6 }}>
+                Notes / Reference (Optional)
               </label>
               <input
                 type="text"
-                placeholder={formType === 'accrual' ? 'e.g. Truck AP-16 delivery' : 'e.g. NEFT transfer #4829'}
+                placeholder="e.g. Dispatched 500 bags Sona Masoori, Cheque #1024"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
+                disabled={busy}
               />
             </div>
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ minHeight: 46 }}>
-            {formType === 'accrual' ? 'Record Commission Accrual' : 'Record Receipt Payment'}
-          </button>
+          <div style={{ textAlign: 'right' }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={busy || !selectedMillId || !amount}
+              style={{ minHeight: 44, padding: '0 26px' }}
+            >
+              {busy
+                ? 'Submitting...'
+                : formType === 'accrual'
+                  ? 'Save Commission Earned'
+                  : 'Save Payment Receipt'}
+            </button>
+          </div>
         </form>
       </div>
 
-      {/* Mill-wise Summary Table */}
-      <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)', marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 16px' }}>Mill Balance Balances Summary</h2>
-
-        {millLedgers.length === 0 ? (
-          <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 24 }}>
-            No commission transactions recorded yet. Use the form above to record your first commission entry.
-          </p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Mill Name</th>
-                  <th>Total Accrued</th>
-                  <th>Total Collected</th>
-                  <th>Pending Balance</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {millLedgers.map(ml => (
-                  <tr key={ml.millName}>
-                    <td style={{ fontWeight: 650, color: 'var(--ink)' }}>{ml.millName}</td>
-                    <td style={{ fontWeight: 650, color: 'var(--gold)' }}>{rupees(ml.accrued)}</td>
-                    <td style={{ fontWeight: 650, color: 'var(--green-light)' }}>{rupees(ml.received)}</td>
-                    <td style={{ fontWeight: 800, color: ml.pending > 0 ? '#fca5a5' : 'var(--green-light)' }}>
-                      {rupees(ml.pending)}
-                    </td>
-                    <td>
-                      <span
-                        className="badge"
-                        style={{
-                          background: ml.pending > 0 ? 'rgba(251, 191, 36, 0.15)' : 'rgba(0, 201, 120, 0.15)',
-                          color: ml.pending > 0 ? 'var(--gold)' : 'var(--green-light)',
-                        }}
-                      >
-                        {ml.pending > 0 ? '⏳ Due' : '✓ Settled'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Mill-wise Reconciliation Table */}
+      <div className="panel" style={{ padding: 24, borderRadius: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Mill Commission Ledger & History</h2>
+            <p style={{ color: 'var(--muted)', margin: 0, fontSize: '0.85rem' }}>
+              Historical commission accruals and receipts fetched from backend database.
+            </p>
           </div>
-        )}
-      </div>
 
-      {/* Transaction History Log */}
-      <div className="panel" style={{ padding: 24, borderRadius: 18, border: '1px solid var(--border)' }}>
-        <h2 style={{ margin: '0 0 16px' }}>Detailed Commission Ledger Log</h2>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={refreshLedger}
+            disabled={millsLoading || loadingCommissions}
+          >
+            {loadingCommissions ? 'Refreshing...' : '↻ Refresh Ledger'}
+          </button>
+        </div>
 
-        {entries.length === 0 ? (
-          <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 24 }}>
-            No records found.
-          </p>
+        {millsLoading ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>
+            Loading ledger...
+          </div>
+        ) : millSummaries.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>
+            No mills added yet. Go to My Mills to add partner mills.
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Mill Name</th>
-                  <th>Description / Notes</th>
-                  <th>Amount</th>
+                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: '0.82rem' }}>
+                  <th style={{ padding: '12px 14px' }}>MILL NAME</th>
+                  <th style={{ padding: '12px 14px' }}>RECORDS</th>
+                  <th style={{ padding: '12px 14px' }}>EARNED</th>
+                  <th style={{ padding: '12px 14px' }}>RECEIVED</th>
+                  <th style={{ padding: '12px 14px' }}>PENDING BALANCE</th>
+                  <th style={{ padding: '12px 14px' }}>COMMISSION HISTORY</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map(ent => (
-                  <tr key={ent.id}>
-                    <td>{ent.date}</td>
-                    <td>
-                      <span
-                        className="badge"
-                        style={{
-                          background: ent.type === 'accrual' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(0, 201, 120, 0.15)',
-                          color: ent.type === 'accrual' ? 'var(--gold)' : 'var(--green-light)',
-                        }}
-                      >
-                        {ent.type === 'accrual' ? '📈 Accrual' : '💸 Receipt'}
-                      </span>
+                {millSummaries.map(m => (
+                  <tr key={m.millId} style={{ borderBottom: '1px solid var(--border)', verticalAlign: 'top' }}>
+                    <td style={{ padding: '12px 14px', fontWeight: 650 }}>
+                      {m.millName}
+                      {!m.isActive && (
+                        <span style={{ fontSize: '0.72rem', color: '#ef4444', marginLeft: 6 }}>
+                          (Deactivated)
+                        </span>
+                      )}
                     </td>
-                    <td style={{ fontWeight: 650 }}>{ent.millName}</td>
-                    <td>{ent.notes || '-'}</td>
+                    <td style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                      {m.commissions.length} entries
+                    </td>
+                    <td style={{ padding: '12px 14px', color: 'var(--gold)', fontWeight: 600 }}>
+                      {rupees(m.earned)}
+                    </td>
+                    <td style={{ padding: '12px 14px', color: 'var(--green-light)', fontWeight: 600 }}>
+                      {rupees(m.received)}
+                    </td>
                     <td
                       style={{
-                        fontWeight: 750,
-                        color: ent.type === 'accrual' ? 'var(--gold)' : 'var(--green-light)',
+                        padding: '12px 14px',
+                        fontWeight: 700,
+                        color: m.pending > 0 ? '#ef4444' : 'var(--green-light)',
                       }}
                     >
-                      {rupees(ent.amount)}
+                      {rupees(m.pending)}
+                    </td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.82rem' }}>
+                      {m.commissions.length === 0 ? (
+                        <span style={{ color: 'var(--muted)' }}>—</span>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          {m.commissions.slice(0, 3).map(c => {
+                            const cEarned = Number(c.commission_amount || c.amount || 0);
+                            const cReceived = (c.receipts || []).reduce(
+                              (s, r) => s + Number(r.amount || 0),
+                              0
+                            );
+                            const cPending = Math.max(0, cEarned - cReceived);
+
+                            return (
+                              <div
+                                key={c.id}
+                                style={{
+                                  background: 'var(--surface-soft)',
+                                  padding: '6px 10px',
+                                  borderRadius: 8,
+                                  fontSize: '0.78rem',
+                                }}
+                              >
+                                <div>
+                                  <strong>{rupees(cEarned)}</strong> ({c.earned_at || '—'})
+                                  <span style={{ marginLeft: 8, color: cPending <= 0 ? 'var(--green-light)' : '#f59e0b' }}>
+                                    {cPending <= 0 ? '✓ Paid' : `Due: ${rupees(cPending)}`}
+                                  </span>
+                                </div>
+                                {c.note && (
+                                  <div style={{ color: 'var(--muted)', fontSize: '0.74rem' }}>
+                                    {c.note}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {m.commissions.length > 3 && (
+                            <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
+                              +{m.commissions.length - 3} older records
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

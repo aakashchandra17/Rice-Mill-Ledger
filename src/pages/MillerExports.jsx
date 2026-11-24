@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getItems, recordExport, describeError } from '../api';
+import { getItems, getMillerCommissiondars, recordExport, describeError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -12,9 +12,13 @@ export default function MillerExports() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState('');
 
+  // Contacts / Buyers from backend
+  const [contacts, setContacts] = useState([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+
   // Form State
   const [buyerName, setBuyerName] = useState('');
-  const [buyerId, setBuyerId] = useState('1'); // Defaults to buyer id 1 for backend schema
+  const [buyerId, setBuyerId] = useState('');
   const [itemId, setItemId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [rate, setRate] = useState('');
@@ -22,9 +26,12 @@ export default function MillerExports() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Local storage key for exports history per user
-  const storageKey = `miller_exports_${user?.id || user?.phone || 'default'}`;
+  // Account-isolated storage key for exports history
+  const userIdentifier = user?.id || user?.phone;
+  const storageKey = userIdentifier ? `miller_exports_${userIdentifier}` : null;
+
   const [exportsList, setExportsList] = useState(() => {
+    if (!storageKey) return [];
     try {
       const saved = localStorage.getItem(storageKey);
       return saved ? JSON.parse(saved) : [];
@@ -34,12 +41,13 @@ export default function MillerExports() {
   });
 
   useEffect(() => {
+    if (!storageKey) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(exportsList));
     } catch {}
   }, [exportsList, storageKey]);
 
-  // Load items from backend
+  // Load items from backend (only active items for new exports)
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -50,10 +58,15 @@ export default function MillerExports() {
     getItems(token)
       .then(data => {
         if (!active) return;
-        const list = Array.isArray(data?.items) ? data.items : [];
-        setItems(list);
-        if (list.length > 0 && !itemId) {
-          setItemId(list[0].id);
+        const rawList = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.items)
+          ? data.items
+          : [];
+        const activeList = rawList.filter(item => item.is_active !== false);
+        setItems(activeList);
+        if (activeList.length > 0 && !itemId) {
+          setItemId(activeList[0].id);
         }
       })
       .catch(err => {
@@ -67,6 +80,42 @@ export default function MillerExports() {
       active = false;
     };
   }, [token]);
+
+  // Load registered contacts / buyers from backend
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+
+    setContactsLoading(true);
+
+    getMillerCommissiondars(token)
+      .then(res => {
+        if (!active) return;
+        const list = Array.isArray(res) ? res : res?.contacts || [];
+        setContacts(list);
+        if (list.length > 0 && !buyerId) {
+          setBuyerId(String(list[0].id));
+          setBuyerName(list[0].name || '');
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setContactsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  const buyerOptions = useMemo(() => {
+    return contacts.map(c => ({
+      id: String(c.id),
+      name: c.name,
+      subtitle: [c.village, c.phone].filter(Boolean).join(' • ') || `Party ID: #${c.id}`,
+      badge: `ID #${c.id}`,
+    }));
+  }, [contacts]);
 
   const itemOptions = useMemo(() => {
     return items.map(item => ({
@@ -111,6 +160,12 @@ export default function MillerExports() {
     setError('');
     setSuccess('');
 
+    const parsedBuyerId = Number(buyerId);
+    if (!parsedBuyerId || parsedBuyerId <= 0) {
+      setError('Please select a registered buyer or enter a valid numeric Buyer ID.');
+      return;
+    }
+
     if (!buyerName.trim()) {
       setError('Please enter a buyer / destination name.');
       return;
@@ -131,7 +186,7 @@ export default function MillerExports() {
     try {
       await recordExport(
         {
-          buyer_id: Number(buyerId) || 1,
+          buyer_id: parsedBuyerId,
           item_id: Number(itemId),
           quantity: qty,
           rate: rt,
@@ -141,6 +196,7 @@ export default function MillerExports() {
 
       const newRecord = {
         id: Date.now(),
+        buyerId: parsedBuyerId,
         buyerName: buyerName.trim(),
         itemId: Number(itemId),
         itemName: itemMap[itemId] || 'Grain Item',
@@ -151,8 +207,7 @@ export default function MillerExports() {
       };
 
       setExportsList(prev => [newRecord, ...prev]);
-      setSuccess(`✓ Export of ${qty} units to "${buyerName.trim()}" recorded successfully.`);
-      setBuyerName('');
+      setSuccess(`✓ Export of ${qty} units to "${buyerName.trim()}" (Buyer ID #${parsedBuyerId}) recorded successfully.`);
       setQuantity('');
       setRate('');
     } catch (err) {
@@ -234,15 +289,73 @@ export default function MillerExports() {
               marginBottom: 16,
             }}
           >
+            {buyerOptions.length > 0 && (
+              <div>
+                <SearchableSelect
+                  id="selectBuyerOption"
+                  label="Select Registered Buyer / Contact"
+                  placeholder={
+                    contactsLoading
+                      ? 'Loading contacts...'
+                      : 'Search registered buyers...'
+                  }
+                  options={buyerOptions}
+                  value={buyerId}
+                  onChange={id => {
+                    setBuyerId(id);
+                    const found = contacts.find(c => String(c.id) === String(id));
+                    if (found) {
+                      setBuyerName(found.name || '');
+                    }
+                  }}
+                />
+              </div>
+            )}
+
             <div>
-              <label style={{ display: 'block', fontSize: '0.86rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 650 }}>
+              <label
+                htmlFor="buyerNameInput"
+                style={{
+                  display: 'block',
+                  fontSize: '0.86rem',
+                  color: '#cbd5e1',
+                  marginBottom: 6,
+                  fontWeight: 650,
+                }}
+              >
                 Buyer / Destination Name *
               </label>
               <input
+                id="buyerNameInput"
                 type="text"
                 placeholder="e.g. Deccan Traders / Kakinada Port"
                 value={buyerName}
                 onChange={e => setBuyerName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="buyerIdInput"
+                style={{
+                  display: 'block',
+                  fontSize: '0.86rem',
+                  color: '#cbd5e1',
+                  marginBottom: 6,
+                  fontWeight: 650,
+                }}
+              >
+                Buyer Party ID *
+              </label>
+              <input
+                id="buyerIdInput"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="e.g. 101"
+                value={buyerId}
+                onChange={e => setBuyerId(e.target.value)}
                 required
               />
             </div>
@@ -354,7 +467,23 @@ export default function MillerExports() {
                 {exportsList.map(exp => (
                   <tr key={exp.id}>
                     <td>{exp.date}</td>
-                    <td style={{ fontWeight: 650, color: 'var(--ink)' }}>{exp.buyerName}</td>
+                    <td style={{ fontWeight: 650, color: 'var(--ink)' }}>
+                      {exp.buyerName}{' '}
+                      {exp.buyerId ? (
+                        <span
+                          style={{
+                            fontSize: '0.76rem',
+                            color: 'var(--muted)',
+                            fontWeight: 400,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: 'rgba(255, 255, 255, 0.06)',
+                          }}
+                        >
+                          #{exp.buyerId}
+                        </span>
+                      ) : null}
+                    </td>
                     <td>{exp.itemName}</td>
                     <td>{exp.quantity} units</td>
                     <td>{rupees(exp.rate)}</td>

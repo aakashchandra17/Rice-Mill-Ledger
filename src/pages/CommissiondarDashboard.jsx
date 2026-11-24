@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   getCommissiondarDashboard,
   getCommissiondarLoans,
   getCommissiondarFarmers,
+  getCommissiondarMills,
+  getCommissiondarMillFarmers,
+  getCommissiondarMillCommissions,
+  getCommissiondarCommissionReceipts,
   describeError,
 } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -13,19 +17,40 @@ const rupees = value =>
 const number = value =>
   Number(value || 0).toLocaleString('en-IN');
 
-export default function CommissiondarDashboard() {
-  const { token, user } = useAuth();
+const formatDate = value => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
 
-  const [data, setData] = useState(null);
-  const [loans, setLoans] = useState([]);
-  const [farmersCount, setFarmersCount] = useState(0);
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+export default function CommissiondarDashboard() {
+  const { token } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isFallback, setIsFallback] = useState(false);
 
-  const userKey = user?.id || user?.phone || 'default';
-  const millsStorageKey = `commissiondar_mills_${userKey}`;
-  const ledgerStorageKey = `commissiondar_ledger_${userKey}`;
+  // Primary backend dashboard response: { active_loans, total_lent_out, total_outstanding, commissions_pending }
+  const [dashboardData, setDashboardData] = useState(null);
+
+  // Entities
+  const [farmers, setFarmers] = useState([]);
+  const [mills, setMills] = useState([]);
+  const [associatedFarmerCount, setAssociatedFarmerCount] = useState(0);
+
+  // Financial aggregates
+  const [commissionsEarned, setCommissionsEarned] = useState(0);
+  const [commissionsReceived, setCommissionsReceived] = useState(0);
+  const [commissionsPending, setCommissionsPending] = useState(0);
+
+  // Activity feeds
+  const [recentCommissions, setRecentCommissions] = useState([]);
+  const [recentLoans, setRecentLoans] = useState([]);
 
   const loadDashboard = useCallback(async () => {
     if (!token) {
@@ -36,177 +61,168 @@ export default function CommissiondarDashboard() {
 
     setLoading(true);
     setError('');
-    setIsFallback(false);
 
-    // 1. Try primary backend dashboard endpoint
-    let dashboardSuccess = false;
     try {
-      const result = await getCommissiondarDashboard(token);
-      if (result && typeof result === 'object') {
-        setData(result);
-        dashboardSuccess = true;
+      // 1. Fetch main dashboard summary
+      let dashRes = null;
+      try {
+        dashRes = await getCommissiondarDashboard(token);
+        setDashboardData(dashRes);
+      } catch (dashErr) {
+        console.warn('Backend dashboard summary call:', dashErr);
       }
-    } catch (dashErr) {
-      console.warn(
-        'Backend /api/commissiondar-dashboard endpoint failed, calculating live from loans and ledger:',
-        dashErr
+
+      // 2. Fetch farmers, mills, and loans in parallel
+      const [farmersRes, millsRes, loansRes] = await Promise.allSettled([
+        getCommissiondarFarmers(token),
+        getCommissiondarMills(token, true),
+        getCommissiondarLoans(token),
+      ]);
+
+      const farmersList =
+        farmersRes.status === 'fulfilled' && farmersRes.value
+          ? Array.isArray(farmersRes.value)
+            ? farmersRes.value
+            : farmersRes.value?.farmers || []
+          : [];
+      setFarmers(farmersList);
+
+      const millsList =
+        millsRes.status === 'fulfilled' && millsRes.value
+          ? Array.isArray(millsRes.value)
+            ? millsRes.value
+            : millsRes.value?.mills || []
+          : [];
+      setMills(millsList);
+
+      const loansList =
+        loansRes.status === 'fulfilled' && loansRes.value
+          ? Array.isArray(loansRes.value)
+            ? loansRes.value
+            : loansRes.value?.loans || []
+          : [];
+      setRecentLoans(loansList.slice(0, 5));
+
+      // 3. For each mill, fetch associated farmers and commissions
+      const uniqueAssociatedFarmerIds = new Set();
+      let totalEarned = 0;
+      let totalRecv = 0;
+      const commissionActivities = [];
+
+      await Promise.allSettled(
+        millsList.map(async mill => {
+          try {
+            // Associated farmers
+            const fRes = await getCommissiondarMillFarmers(mill.id, token);
+            const fList = Array.isArray(fRes) ? fRes : fRes?.farmers || [];
+            fList.forEach(f => uniqueAssociatedFarmerIds.add(f.id || f.farmer_id));
+          } catch {}
+
+          try {
+            // Commissions for this mill
+            const cRes = await getCommissiondarMillCommissions(mill.id, token);
+            const cList = Array.isArray(cRes) ? cRes : cRes?.commissions || [];
+
+            await Promise.all(
+              cList.map(async comm => {
+                const earnedAmt = Number(comm.commission_amount || comm.amount || 0);
+                totalEarned += earnedAmt;
+
+                let commRecv = 0;
+                try {
+                  const rRes = await getCommissiondarCommissionReceipts(comm.id, token);
+                  const rList = Array.isArray(rRes) ? rRes : rRes?.receipts || [];
+                  rList.forEach(r => {
+                    const rAmt = Number(r.amount || 0);
+                    commRecv += rAmt;
+                  });
+                } catch {}
+
+                totalRecv += commRecv;
+
+                commissionActivities.push({
+                  id: comm.id,
+                  millName: mill.name,
+                  amount: earnedAmt,
+                  received: commRecv,
+                  pending: Math.max(0, earnedAmt - commRecv),
+                  date: comm.earned_at || comm.created_at,
+                  note: comm.note,
+                });
+              })
+            );
+          } catch {}
+        })
       );
+
+      setAssociatedFarmerCount(uniqueAssociatedFarmerIds.size);
+      setCommissionsEarned(totalEarned);
+      setCommissionsReceived(totalRecv);
+      setCommissionsPending(Math.max(0, totalEarned - totalRecv));
+
+      // Sort recent commission activities by date/id descending
+      commissionActivities.sort((a, b) => (b.id || 0) - (a.id || 0));
+      setRecentCommissions(commissionActivities.slice(0, 5));
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setLoading(false);
     }
-
-    // 2. Fetch loans and network data (for tables and fallback calculation)
-    try {
-      const loansRes = await getCommissiondarLoans(token);
-      const loansList = Array.isArray(loansRes)
-        ? loansRes
-        : loansRes?.loans ?? [];
-      setLoans(loansList);
-
-      // If backend dashboard endpoint failed or was incomplete, calculate from live loan records
-      if (!dashboardSuccess) {
-        let totalLent = 0;
-        let totalOutstanding = 0;
-        let activeLoans = 0;
-
-        loansList.forEach(l => {
-          const principal = Number(l.amount || 0);
-          const balance = Number(l.outstanding_balance ?? l.amount ?? 0);
-          totalLent += principal;
-          totalOutstanding += balance;
-          if (balance > 0) activeLoans += 1;
-        });
-
-        // Compute pending commissions from manual mill ledger
-        let pendingCommissions = 0;
-        try {
-          const saved = localStorage.getItem(ledgerStorageKey);
-          if (saved) {
-            const entries = JSON.parse(saved);
-            let accrued = 0;
-            let received = 0;
-            entries.forEach(e => {
-              if (e.type === 'accrual') accrued += Number(e.amount || 0);
-              if (e.type === 'receipt') received += Number(e.amount || 0);
-            });
-            pendingCommissions = Math.max(0, accrued - received);
-          }
-        } catch {}
-
-        setData({
-          active_loans: activeLoans,
-          total_lent_out: totalLent,
-          total_outstanding: totalOutstanding,
-          commissions_pending: pendingCommissions,
-        });
-        setIsFallback(true);
-      }
-    } catch (loanErr) {
-      if (!dashboardSuccess) {
-        setError(describeError(loanErr));
-      }
-    }
-
-    // 3. Fetch farmers count for network overview
-    try {
-      const farmersRes = await getCommissiondarFarmers(token);
-      const farmersList = Array.isArray(farmersRes)
-        ? farmersRes
-        : farmersRes?.farmers ?? [];
-      setFarmersCount(farmersList.length);
-    } catch {}
-
-    setLoading(false);
-  }, [token, ledgerStorageKey]);
+  }, [token]);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
-  // Mill count from local storage
-  const millsCount = (() => {
-    try {
-      const saved = localStorage.getItem(millsStorageKey);
-      return saved ? JSON.parse(saved).filter(m => m.isActive !== false).length : 0;
-    } catch {
-      return 0;
-    }
-  })();
-
+  // Priority metrics display
   const metrics = [
     {
-      label: 'Active Farmer Loans',
-      value: number(data?.active_loans),
-      icon: '📋',
-      description: 'Currently outstanding loans',
-      tone: 'var(--gold)',
-    },
-    {
-      label: 'Total Lent Out',
-      value: rupees(data?.total_lent_out),
-      icon: '💰',
-      description: 'Total capital disbursed to farmers',
-      tone: 'var(--green-light)',
-    },
-    {
-      label: 'Total Outstanding',
-      value: rupees(data?.total_outstanding),
-      icon: '📊',
-      description: 'Loan principal yet to be recovered',
-      tone: '#f59e0b',
-    },
-    {
-      label: 'Pending Mill Commissions',
-      value: rupees(data?.commissions_pending),
-      icon: '⏳',
-      description: 'Commission amount awaiting settlement',
-      tone: '#60a5fa',
-    },
-  ];
-
-  const quickLinks = [
-    {
-      to: '/commissiondar/farmers',
-      label: 'My Farmers',
-      count: `${farmersCount} Farmers`,
+      label: 'Network Farmers',
+      value: number(farmers.length),
+      subtext: 'Directly registered farmers',
       icon: '👨‍🌾',
-      desc: 'View & register farmers in your network',
+      tone: 'var(--green-light)',
+      to: '/commissiondar/farmers',
     },
     {
-      to: '/commissiondar/grain-types',
-      label: 'Custom Grains',
-      icon: '🌾',
-      desc: 'Define crop varieties & measuring units',
-    },
-    {
-      to: '/commissiondar/stock',
-      label: 'Stock Dispatches',
-      icon: '📦',
-      desc: 'Receive from farmers & deliver to mills',
-    },
-    {
-      to: '/commissiondar/mills',
-      label: 'My Mills',
-      count: `${millsCount} Mills`,
+      label: 'Partner Rice Mills',
+      value: number(mills.length),
+      subtext: `${associatedFarmerCount} associated farmers`,
       icon: '🏭',
-      desc: 'Manage rice mills & farmer associations',
+      tone: 'var(--cyan)',
+      to: '/commissiondar/mills',
     },
     {
+      label: 'Commission Earned',
+      value: rupees(commissionsEarned),
+      subtext: 'Total earned from mills',
+      icon: '📈',
+      tone: 'var(--gold)',
       to: '/commissiondar/ledger',
-      label: 'Mill Ledger',
-      icon: '📖',
-      desc: 'Accrue commissions & track receipts',
     },
     {
-      to: '/commissiondar/loans',
-      label: 'Farmer Loans',
-      count: `${loans.length} Loans`,
+      label: 'Commission Received',
+      value: rupees(commissionsReceived),
+      subtext: 'Payments collected',
       icon: '💰',
-      desc: 'Disburse loans & record repayments',
+      tone: 'var(--green-light)',
+      to: '/commissiondar/ledger',
     },
     {
-      to: '/commissiondar/reports',
-      label: 'Performance Reports',
-      icon: '📊',
-      desc: 'Audit stock movements & balances',
+      label: 'Pending Commission',
+      value: rupees(commissionsPending || dashboardData?.commissions_pending),
+      subtext: 'Due from partner mills',
+      icon: '⏳',
+      tone: (commissionsPending || dashboardData?.commissions_pending) > 0 ? '#ef4444' : 'var(--green-light)',
+      to: '/commissiondar/ledger',
+    },
+    {
+      label: 'Active Farmer Loans',
+      value: number(dashboardData?.active_loans ?? recentLoans.length),
+      subtext: `Outstanding: ${rupees(dashboardData?.total_outstanding)}`,
+      icon: '📋',
+      tone: '#f59e0b',
+      to: '/commissiondar/loans',
     },
   ];
 
@@ -226,342 +242,255 @@ export default function CommissiondarDashboard() {
           <p className="dashboard-eyebrow">COMMISSION AGENT SUITE / OVERVIEW</p>
           <h1 style={{ margin: '4px 0 6px' }}>Commissiondar Dashboard</h1>
           <p style={{ color: 'var(--muted)', margin: 0 }}>
-            Real-time overview of farmer loans, mill dispatches, and accrued commissions.
+            Live status of your farmer network, mill associations, commission ledgers, and loan portfolios.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: '0.82rem',
-              color: 'var(--green-light)',
-              background: 'rgba(16, 185, 129, 0.1)',
-              padding: '6px 12px',
-              borderRadius: 20,
-              border: '1px solid rgba(16, 185, 129, 0.25)',
-            }}
-          >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: 'var(--green-light)',
-                boxShadow: '0 0 8px var(--green-light)',
-              }}
-            />
-            Connected
-          </span>
-
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={loadDashboard}
-            disabled={loading}
-          >
-            {loading ? 'Refreshing...' : '↻ Refresh'}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={loadDashboard}
+          disabled={loading}
+        >
+          {loading ? 'Refreshing...' : '↻ Refresh Dashboard'}
+        </button>
       </div>
 
-      {isFallback && (
-        <div
-          style={{
-            background: 'rgba(56, 189, 248, 0.08)',
-            border: '1px solid rgba(56, 189, 248, 0.25)',
-            padding: '10px 16px',
-            borderRadius: 12,
-            marginBottom: 20,
-            fontSize: '0.85rem',
-            color: '#38bdf8',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <span>ℹ️</span>
-          <span>
-            Dashboard metrics calculated live from your active loan ledgers and mill records.
-          </span>
+      {error && (
+        <div className="panel form-error" role="alert" style={{ padding: 14, marginBottom: 16 }}>
+          {error}
         </div>
       )}
 
-      {loading && (
-        <div className="panel" style={{ padding: 32, textAlign: 'center' }}>
-          <p style={{ margin: 0 }}>Loading commissiondar workspace...</p>
+      {loading ? (
+        <div className="panel" style={{ padding: 36, textAlign: 'center' }}>
+          <p style={{ margin: 0 }}>Loading commissiondar metrics...</p>
         </div>
-      )}
-
-      {error && !data && (
-        <div className="panel" role="alert" style={{ padding: 24, textAlign: 'center' }}>
-          <h3 style={{ marginTop: 0 }}>Unable to load dashboard</h3>
-          <p style={{ color: 'var(--muted)' }}>{error}</p>
-          <button type="button" className="btn btn-primary" onClick={loadDashboard}>
-            Try Again
-          </button>
-        </div>
-      )}
-
-      {!loading && data && (
+      ) : (
         <>
-          {/* Top 4 Metrics Cards */}
+          {/* Top 6 KPI Metric Cards */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
               gap: 16,
               marginBottom: 24,
             }}
           >
             {metrics.map(metric => (
-              <div
-                className="panel"
+              <Link
                 key={metric.label}
+                to={metric.to}
+                className="panel"
                 style={{
-                  padding: 22,
+                  padding: 20,
                   borderRadius: 16,
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  textDecoration: 'none',
+                  color: 'var(--ink)',
                   border: '1px solid var(--border)',
-                  background: 'var(--surface)',
+                  transition: 'transform 0.15s ease, border-color 0.15s ease',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.borderColor = metric.tone;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'none';
+                  e.currentTarget.style.borderColor = 'var(--border)';
                 }}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 14,
-                  }}
-                >
-                  <span
-                    style={{
-                      color: 'var(--muted)',
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    {metric.label}
-                  </span>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 650, textTransform: 'uppercase' }}>
+                      {metric.label}
+                    </span>
+                    <span style={{ fontSize: 22 }}>{metric.icon}</span>
+                  </div>
 
-                  <span style={{ fontSize: 22 }}>{metric.icon}</span>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: metric.tone, margin: '0 0 4px' }}>
+                    {metric.value}
+                  </div>
                 </div>
 
-                <div
-                  style={{
-                    fontSize: '1.75rem',
-                    fontWeight: 800,
-                    color: metric.tone,
-                    margin: '0 0 6px',
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {metric.value}
+                <div style={{ fontSize: '0.78rem', color: 'var(--muted)', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 10 }}>
+                  {metric.subtext}
                 </div>
-
-                <p
-                  style={{
-                    color: 'var(--muted)',
-                    fontSize: '0.78rem',
-                    margin: 0,
-                  }}
-                >
-                  {metric.description}
-                </p>
-              </div>
+              </Link>
             ))}
           </div>
 
           {/* Quick Action Navigation Grid */}
-          <div className="panel" style={{ padding: 24, borderRadius: 18, marginBottom: 24 }}>
-            <h3 style={{ margin: '0 0 6px' }}>Quick Management Hub</h3>
-            <p style={{ color: 'var(--muted)', margin: '0 0 18px', fontSize: '0.85rem' }}>
-              Access all operational sections of your commission trade account.
-            </p>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: 14,
-              }}
-            >
-              {quickLinks.map(link => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 14,
-                    padding: 16,
-                    borderRadius: 14,
-                    background: 'var(--surface-soft)',
-                    border: '1px solid var(--border)',
-                    textDecoration: 'none',
-                    color: 'var(--ink)',
-                    transition: 'transform 0.15s ease, border-color 0.15s ease',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.borderColor = 'var(--green-light)';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.borderColor = 'var(--border)';
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      fontSize: 20,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {link.icon}
-                  </div>
-
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <strong style={{ fontSize: '0.95rem' }}>{link.label}</strong>
-                      {link.count && (
-                        <span
-                          style={{
-                            fontSize: '0.7rem',
-                            padding: '2px 6px',
-                            borderRadius: 8,
-                            background: 'rgba(16, 185, 129, 0.15)',
-                            color: 'var(--green-light)',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {link.count}
-                        </span>
-                      )}
-                    </div>
-                    <p
-                      style={{
-                        margin: '2px 0 0',
-                        fontSize: '0.75rem',
-                        color: 'var(--muted)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {link.desc}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+          <div className="panel" style={{ padding: 22, borderRadius: 16, marginBottom: 24 }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: '1.05rem' }}>Commissiondar Quick Navigation</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+              <Link to="/commissiondar/farmers" className="btn btn-ghost" style={{ textAlign: 'center', padding: '12px 10px' }}>
+                👨‍🌾 Farmers ({farmers.length})
+              </Link>
+              <Link to="/commissiondar/mills" className="btn btn-ghost" style={{ textAlign: 'center', padding: '12px 10px' }}>
+                🏭 My Mills ({mills.length})
+              </Link>
+              <Link to="/commissiondar/grain-types" className="btn btn-ghost" style={{ textAlign: 'center', padding: '12px 10px' }}>
+                🌾 Custom Grains
+              </Link>
+              <Link to="/commissiondar/stock" className="btn btn-ghost" style={{ textAlign: 'center', padding: '12px 10px' }}>
+                📦 Stock & Dispatches
+              </Link>
+              <Link to="/commissiondar/ledger" className="btn btn-ghost" style={{ textAlign: 'center', padding: '12px 10px' }}>
+                📖 Mill Ledger
+              </Link>
+              <Link to="/commissiondar/loans" className="btn btn-ghost" style={{ textAlign: 'center', padding: '12px 10px' }}>
+                💰 Farmer Loans
+              </Link>
+              <Link to="/commissiondar/reports" className="btn btn-ghost" style={{ textAlign: 'center', padding: '12px 10px' }}>
+                📊 Audit Reports
+              </Link>
             </div>
           </div>
 
-          {/* Recent Loans Overview Table */}
-          {loans.length > 0 && (
-            <div className="panel" style={{ padding: 24, borderRadius: 18 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 16,
-                  flexWrap: 'wrap',
-                  gap: 10,
-                }}
-              >
+          {/* 2 Activity Columns: Recent Commissions & Recent Loans */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+              gap: 20,
+            }}
+          >
+            {/* Column 1: Latest Commission Activity */}
+            <div className="panel" style={{ padding: 22, borderRadius: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div>
-                  <h3 style={{ margin: '0 0 4px' }}>Recent Farmer Loan Accounts</h3>
-                  <p style={{ color: 'var(--muted)', margin: 0, fontSize: '0.85rem' }}>
-                    Latest loans issued to network farmers.
+                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Latest Commission Activity</h3>
+                  <p style={{ color: 'var(--muted)', fontSize: '0.8rem', margin: 0 }}>
+                    Commission accruals recorded against partner mills.
                   </p>
                 </div>
-
-                <Link
-                  to="/commissiondar/loans"
-                  className="btn btn-ghost"
-                  style={{ fontSize: '0.82rem' }}
-                >
-                  View All Loans ({loans.length}) →
+                <Link to="/commissiondar/ledger" style={{ fontSize: '0.82rem', color: 'var(--green-light)', textDecoration: 'none' }}>
+                  View All →
                 </Link>
               </div>
 
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
-                    <tr
+              {recentCommissions.length === 0 ? (
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: '0.88rem' }}>
+                  No commission entries recorded yet.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {recentCommissions.map(comm => (
+                    <div
+                      key={comm.id}
                       style={{
-                        borderBottom: '1px solid var(--border)',
-                        color: 'var(--muted)',
-                        fontSize: '0.82rem',
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        background: 'var(--surface-soft)',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
                       }}
                     >
-                      <th style={{ padding: '10px 14px' }}>FARMER NAME</th>
-                      <th style={{ padding: '10px 14px' }}>LOAN PRINCIPAL</th>
-                      <th style={{ padding: '10px 14px' }}>OUTSTANDING</th>
-                      <th style={{ padding: '10px 14px' }}>STATUS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loans.slice(0, 5).map((loan, idx) => {
-                      const principal = Number(loan.amount || 0);
-                      const balance = Number(loan.outstanding_balance ?? loan.amount ?? 0);
-                      const isCleared = balance <= 0;
+                      <div>
+                        <strong style={{ fontSize: '0.92rem' }}>{comm.millName}</strong>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                          {formatDate(comm.date)} {comm.note && `• ${comm.note}`}
+                        </div>
+                      </div>
 
-                      return (
-                        <tr
-                          key={loan.id || idx}
-                          style={{ borderBottom: '1px solid var(--border)' }}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: 'var(--gold)', fontWeight: 700 }}>
+                          {rupees(comm.amount)}
+                        </div>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: comm.pending <= 0 ? 'var(--green-light)' : '#f59e0b',
+                          }}
                         >
-                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>
+                          {comm.pending <= 0 ? '✓ Paid' : `Due: ${rupees(comm.pending)}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Column 2: Latest Loan Activity */}
+            <div className="panel" style={{ padding: 22, borderRadius: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Latest Farmer Loans</h3>
+                  <p style={{ color: 'var(--muted)', fontSize: '0.8rem', margin: 0 }}>
+                    Recent loan disbursements and recovery status.
+                  </p>
+                </div>
+                <Link to="/commissiondar/loans" style={{ fontSize: '0.82rem', color: 'var(--green-light)', textDecoration: 'none' }}>
+                  View All →
+                </Link>
+              </div>
+
+              {recentLoans.length === 0 ? (
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: '0.88rem' }}>
+                  No active farmer loans recorded.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {recentLoans.map((loan, idx) => {
+                    const principal = Number(loan.amount || loan.principal || 0);
+                    const balance = Number(loan.outstanding_balance ?? loan.amount ?? 0);
+                    const isCleared = balance <= 0;
+
+                    return (
+                      <div
+                        key={loan.id || idx}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: 10,
+                          background: 'var(--surface-soft)',
+                          border: '1px solid var(--border)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <strong style={{ fontSize: '0.92rem' }}>
                             {loan.farmer_name || loan.farmerName || `Farmer #${loan.farmer_id || idx + 1}`}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>{rupees(principal)}</td>
-                          <td
+                          </strong>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                            Principal: {rupees(principal)}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <div
                             style={{
-                              padding: '10px 14px',
                               fontWeight: 700,
                               color: isCleared ? 'var(--green-light)' : '#f59e0b',
                             }}
                           >
                             {rupees(balance)}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                padding: '3px 8px',
-                                borderRadius: 6,
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                background: isCleared
-                                  ? 'rgba(16, 185, 129, 0.15)'
-                                  : 'rgba(245, 158, 11, 0.15)',
-                                color: isCleared ? 'var(--green-light)' : '#f59e0b',
-                              }}
-                            >
-                              {isCleared ? 'SETTLED' : 'ACTIVE'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: isCleared ? 'var(--green-light)' : '#f59e0b',
+                            }}
+                          >
+                            {isCleared ? 'SETTLED' : 'ACTIVE'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </>
       )}
     </div>

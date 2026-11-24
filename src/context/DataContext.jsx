@@ -276,5 +276,6 @@ export function DataProvider({ children }) {
 }
 
 export function useData() {
-  return useContext(DataContext);
+  const context = useContext(DataContext);
+  return context || {};
 }
