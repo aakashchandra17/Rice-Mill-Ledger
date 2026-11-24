@@ -21,7 +21,7 @@ import {
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  const { token, user } = useAuth();
+  const { token, user, role } = useAuth();
 
   const [farmers, setFarmers] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -31,9 +31,9 @@ export function DataProvider({ children }) {
 
   const today = () => new Date().toISOString().slice(0, 10);
 
-  // Load farmers from the actual backend.
+  // Load farmers from the actual backend (Miller role only).
   const refreshFarmers = useCallback(async () => {
-    if (!token) {
+    if (!token || (role && role !== 'owner')) {
       setFarmers([]);
       return;
     }
@@ -62,17 +62,17 @@ export function DataProvider({ children }) {
     } finally {
       setFarmersLoading(false);
     }
-  }, [token]);
+  }, [token, role]);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || (role && role !== 'owner')) {
       setFarmers([]);
       setTransactions([]);
       return;
     }
 
     refreshFarmers().catch(() => {});
-  }, [token, refreshFarmers]);
+  }, [token, role, refreshFarmers]);
 
   // Create a farmer in the backend.
   const addFarmerRecord = async ({ name, village, associated_commissiondar_id }) => {
