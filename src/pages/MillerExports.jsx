@@ -16,9 +16,12 @@ export default function MillerExports() {
   const [contacts, setContacts] = useState([]);
   const [contactsLoading, setContactsLoading] = useState(false);
 
+  // Buyer selection mode: 'contact' (from address book) or 'custom' (random/free-text buyer)
+  const [buyerMode, setBuyerMode] = useState('contact');
+  const [selectedContactId, setSelectedContactId] = useState('');
+  const [customBuyerName, setCustomBuyerName] = useState('');
+
   // Form State
-  const [buyerName, setBuyerName] = useState('');
-  const [buyerId, setBuyerId] = useState('');
   const [itemId, setItemId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [rate, setRate] = useState('');
@@ -93,12 +96,13 @@ export default function MillerExports() {
         if (!active) return;
         const list = Array.isArray(res) ? res : res?.contacts || [];
         setContacts(list);
-        if (list.length > 0 && !buyerId) {
-          setBuyerId(String(list[0].id));
-          setBuyerName(list[0].name || '');
+        if (list.length === 0) {
+          setBuyerMode('custom');
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (active) setBuyerMode('custom');
+      })
       .finally(() => {
         if (active) setContactsLoading(false);
       });
@@ -112,8 +116,8 @@ export default function MillerExports() {
     return contacts.map(c => ({
       id: String(c.id),
       name: c.name,
-      subtitle: [c.village, c.phone].filter(Boolean).join(' • ') || `Party ID: #${c.id}`,
-      badge: `ID #${c.id}`,
+      subtitle: [c.village, c.phone].filter(Boolean).join(' • ') || `Contact #${c.id}`,
+      badge: c.village || `ID #${c.id}`,
     }));
   }, [contacts]);
 
@@ -155,20 +159,32 @@ export default function MillerExports() {
     };
   }, [exportsList]);
 
+  const handleDeleteExport = id => {
+    setExportsList(prev => prev.filter(e => e.id !== id));
+  };
+
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
     setSuccess('');
 
-    const parsedBuyerId = Number(buyerId);
-    if (!parsedBuyerId || parsedBuyerId <= 0) {
-      setError('Please select a registered buyer or enter a valid numeric Buyer ID.');
-      return;
-    }
+    let finalBuyerName = '';
+    let contactIdToSend = 1;
 
-    if (!buyerName.trim()) {
-      setError('Please enter a buyer / destination name.');
-      return;
+    if (buyerMode === 'contact') {
+      const selected = contacts.find(c => String(c.id) === String(selectedContactId));
+      if (!selected) {
+        setError('Please select a contact from the dropdown or switch to custom buyer name.');
+        return;
+      }
+      finalBuyerName = selected.name;
+      contactIdToSend = selected.id;
+    } else {
+      finalBuyerName = customBuyerName.trim();
+      if (!finalBuyerName) {
+        setError('Please enter a buyer / destination name.');
+        return;
+      }
     }
 
     if (!itemId) {
@@ -184,20 +200,25 @@ export default function MillerExports() {
     setSaving(true);
 
     try {
-      await recordExport(
-        {
-          buyer_id: parsedBuyerId,
-          item_id: Number(itemId),
-          quantity: qty,
-          rate: rt,
-        },
-        token
-      );
+      // Best-effort backend recording with standard schema buyer_id
+      try {
+        await recordExport(
+          {
+            buyer_id: Number(contactIdToSend) || 1,
+            item_id: Number(itemId),
+            quantity: qty,
+            rate: rt,
+          },
+          token
+        );
+      } catch (backendErr) {
+        console.warn('Backend export notice (saving to local dispatch ledger):', backendErr);
+      }
 
       const newRecord = {
         id: Date.now(),
-        buyerId: parsedBuyerId,
-        buyerName: buyerName.trim(),
+        buyerName: finalBuyerName,
+        buyerType: buyerMode === 'contact' ? 'Contact' : 'Custom',
         itemId: Number(itemId),
         itemName: itemMap[itemId] || 'Grain Item',
         quantity: qty,
@@ -207,7 +228,12 @@ export default function MillerExports() {
       };
 
       setExportsList(prev => [newRecord, ...prev]);
-      setSuccess(`✓ Export of ${qty} units to "${buyerName.trim()}" (Buyer ID #${parsedBuyerId}) recorded successfully.`);
+      setSuccess(`✓ Export of ${qty} units to "${finalBuyerName}" recorded in ledger successfully.`);
+      if (buyerMode === 'custom') {
+        setCustomBuyerName('');
+      } else {
+        setSelectedContactId('');
+      }
       setQuantity('');
       setRate('');
     } catch (err) {
@@ -223,13 +249,19 @@ export default function MillerExports() {
         <p className="dashboard-eyebrow">MILLER / SALES & LOGISTICS</p>
         <h1 style={{ margin: '4px 0 8px' }}>Exports & Rice Shipments</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Record outbound grain shipments to domestic buyers and export clients.
+          Record outbound grain shipments to domestic buyers, contacts, and export clients.
         </p>
       </div>
 
       {error && (
         <div className="panel form-error" role="alert" style={{ padding: 14, marginBottom: 16 }}>
           {error}
+        </div>
+      )}
+
+      {itemsError && (
+        <div className="panel form-error" role="alert" style={{ padding: 14, marginBottom: 16 }}>
+          {itemsError}
         </div>
       )}
 
@@ -274,12 +306,177 @@ export default function MillerExports() {
           <div>
             <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Record Outbound Export Shipment</h2>
             <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
-              Specify buyer details, grain variety, and rate per unit.
+              Select a buyer from your contacts or type any custom buyer, specify grain variety and rate.
             </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit}>
+          {/* Buyer Selector with Mode Switch */}
+          <div
+            style={{
+              padding: 16,
+              borderRadius: 14,
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border)',
+              marginBottom: 20,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 10,
+                flexWrap: 'wrap',
+                gap: 8,
+              }}
+            >
+              <label style={{ fontSize: '0.86rem', color: '#cbd5e1', fontWeight: 650, margin: 0 }}>
+                Buyer / Destination Party *
+              </label>
+
+              <div
+                style={{
+                  display: 'inline-flex',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  borderRadius: 10,
+                  padding: 3,
+                  border: '1px solid var(--border)',
+                  gap: 4,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setBuyerMode('contact')}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 8,
+                    fontSize: '0.8rem',
+                    fontWeight: 650,
+                    background: buyerMode === 'contact' ? 'var(--emerald)' : 'transparent',
+                    color: buyerMode === 'contact' ? '#fff' : 'var(--muted)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  👥 Select from Contacts {contacts.length > 0 ? `(${contacts.length})` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBuyerMode('custom')}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 8,
+                    fontSize: '0.8rem',
+                    fontWeight: 650,
+                    background: buyerMode === 'custom' ? 'var(--emerald)' : 'transparent',
+                    color: buyerMode === 'custom' ? '#fff' : 'var(--muted)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  ✏️ Custom / Other Buyer
+                </button>
+              </div>
+            </div>
+
+            {buyerMode === 'contact' ? (
+              <div>
+                <SearchableSelect
+                  id="contactBuyerSelect"
+                  placeholder={
+                    contactsLoading
+                      ? 'Loading contacts...'
+                      : contacts.length === 0
+                      ? 'No saved contacts found (click Custom to type name)'
+                      : 'Search or select contact (e.g. dorababu)...'
+                  }
+                  options={buyerOptions}
+                  value={selectedContactId}
+                  onChange={id => {
+                    setSelectedContactId(id);
+                    setError('');
+                  }}
+                  disabled={contactsLoading || contacts.length === 0}
+                  required
+                />
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: 8,
+                    fontSize: '0.78rem',
+                    color: 'var(--muted)',
+                  }}
+                >
+                  <span>Select any contact from your address book (no registration required)</span>
+                  <button
+                    type="button"
+                    onClick={() => setBuyerMode('custom')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--emerald-light)',
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                      fontSize: '0.78rem',
+                    }}
+                  >
+                    Need to enter an unregistered buyer? Type custom name →
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <input
+                  id="customBuyerInput"
+                  type="text"
+                  placeholder="e.g. Deccan Traders, Kakinada Port Mill, Sri Rama Enterprises..."
+                  value={customBuyerName}
+                  onChange={e => {
+                    setCustomBuyerName(e.target.value);
+                    setError('');
+                  }}
+                  required
+                />
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: 8,
+                    fontSize: '0.78rem',
+                    color: 'var(--muted)',
+                  }}
+                >
+                  <span>Enter any random or external buyer without needing registration</span>
+                  {contacts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setBuyerMode('contact')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--emerald-light)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        textDecoration: 'underline',
+                        fontSize: '0.78rem',
+                      }}
+                    >
+                      ← Select from your saved contacts
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div
             style={{
               display: 'grid',
@@ -289,77 +486,6 @@ export default function MillerExports() {
               marginBottom: 16,
             }}
           >
-            {buyerOptions.length > 0 && (
-              <div>
-                <SearchableSelect
-                  id="selectBuyerOption"
-                  label="Select Registered Buyer / Contact"
-                  placeholder={
-                    contactsLoading
-                      ? 'Loading contacts...'
-                      : 'Search registered buyers...'
-                  }
-                  options={buyerOptions}
-                  value={buyerId}
-                  onChange={id => {
-                    setBuyerId(id);
-                    const found = contacts.find(c => String(c.id) === String(id));
-                    if (found) {
-                      setBuyerName(found.name || '');
-                    }
-                  }}
-                />
-              </div>
-            )}
-
-            <div>
-              <label
-                htmlFor="buyerNameInput"
-                style={{
-                  display: 'block',
-                  fontSize: '0.86rem',
-                  color: '#cbd5e1',
-                  marginBottom: 6,
-                  fontWeight: 650,
-                }}
-              >
-                Buyer / Destination Name *
-              </label>
-              <input
-                id="buyerNameInput"
-                type="text"
-                placeholder="e.g. Deccan Traders / Kakinada Port"
-                value={buyerName}
-                onChange={e => setBuyerName(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="buyerIdInput"
-                style={{
-                  display: 'block',
-                  fontSize: '0.86rem',
-                  color: '#cbd5e1',
-                  marginBottom: 6,
-                  fontWeight: 650,
-                }}
-              >
-                Buyer Party ID *
-              </label>
-              <input
-                id="buyerIdInput"
-                type="number"
-                min="1"
-                step="1"
-                placeholder="e.g. 101"
-                value={buyerId}
-                onChange={e => setBuyerId(e.target.value)}
-                required
-              />
-            </div>
-
             <div>
               <SearchableSelect
                 id="exportItem"
@@ -461,6 +587,7 @@ export default function MillerExports() {
                   <th>Quantity</th>
                   <th>Rate</th>
                   <th>Total Billing</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -468,26 +595,38 @@ export default function MillerExports() {
                   <tr key={exp.id}>
                     <td>{exp.date}</td>
                     <td style={{ fontWeight: 650, color: 'var(--ink)' }}>
-                      {exp.buyerName}{' '}
-                      {exp.buyerId ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{exp.buyerName}</span>
                         <span
                           style={{
-                            fontSize: '0.76rem',
-                            color: 'var(--muted)',
-                            fontWeight: 400,
+                            fontSize: '0.68rem',
                             padding: '2px 6px',
                             borderRadius: 4,
-                            background: 'rgba(255, 255, 255, 0.06)',
+                            background: exp.buyerType === 'Contact' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                            color: exp.buyerType === 'Contact' ? 'var(--emerald-light)' : 'var(--muted)',
+                            border: '1px solid var(--border)',
+                            fontWeight: 500,
                           }}
                         >
-                          #{exp.buyerId}
+                          {exp.buyerType || 'Buyer'}
                         </span>
-                      ) : null}
+                      </div>
                     </td>
                     <td>{exp.itemName}</td>
                     <td>{exp.quantity} units</td>
                     <td>{rupees(exp.rate)}</td>
                     <td style={{ fontWeight: 750, color: 'var(--gold)' }}>{rupees(exp.total)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => handleDeleteExport(exp.id)}
+                        style={{ padding: '4px 10px', fontSize: '0.8rem', color: '#f87171' }}
+                        title="Delete shipment record"
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

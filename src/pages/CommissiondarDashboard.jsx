@@ -281,41 +281,23 @@ export default function CommissiondarDashboard() {
               <Link
                 key={metric.label}
                 to={metric.to}
-                className="panel"
-                style={{
-                  padding: 20,
-                  borderRadius: 16,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  textDecoration: 'none',
-                  color: 'var(--ink)',
-                  border: '1px solid var(--border)',
-                  transition: 'transform 0.15s ease, border-color 0.15s ease',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.borderColor = metric.tone;
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.borderColor = 'var(--border)';
-                }}
+                className="panel commissiondar-kpi-card"
+                style={{ '--kpi-tone': metric.tone }}
               >
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 650, textTransform: 'uppercase' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {metric.label}
                     </span>
-                    <span style={{ fontSize: 22 }}>{metric.icon}</span>
+                    <span className="commissiondar-kpi-icon">{metric.icon}</span>
                   </div>
 
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: metric.tone, margin: '0 0 4px' }}>
+                  <div className="commissiondar-kpi-value" style={{ color: metric.tone }}>
                     {metric.value}
                   </div>
                 </div>
 
-                <div style={{ fontSize: '0.78rem', color: 'var(--muted)', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 10 }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--muted)', borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 10 }}>
                   {metric.subtext}
                 </div>
               </Link>

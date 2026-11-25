@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   getMillerInventory,
   getMillerInventoryMovements,
+  getItems,
+  getFarmers,
+  getMillerCommissiondars,
   describeError,
 } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -30,11 +33,15 @@ const formatDate = dateString => {
 const MOVEMENTS_PAGE_SIZE = 25;
 
 export default function MillerInventory() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Farmers and Brokers for Party/Broker Name Resolution
+  const [farmers, setFarmers] = useState([]);
+  const [contacts, setContacts] = useState([]);
 
   // Search & Filter
   const [search, setSearch] = useState('');
@@ -48,26 +55,204 @@ export default function MillerInventory() {
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [movementsError, setMovementsError] = useState('');
 
-  // Load Inventory Summary directly from backend
+  // Name lookup maps
+  const farmerMap = useMemo(() => {
+    const map = {};
+    farmers.forEach(f => {
+      if (f.id) map[f.id] = f.name;
+    });
+    return map;
+  }, [farmers]);
+
+  const brokerMap = useMemo(() => {
+    const map = {};
+    contacts.forEach(c => {
+      if (c.id) map[c.id] = c.name;
+    });
+    return map;
+  }, [contacts]);
+
+  // Account-isolated storage key for exports history
+  const userIdentifier = user?.id || user?.phone;
+  const storageKey = userIdentifier ? `miller_exports_${userIdentifier}` : null;
+
+  // Load Inventory Summary directly from backend enriched with movements & items
   const loadInventory = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError('');
 
     try {
-      const data = await getMillerInventory(token);
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.inventory)
-        ? data.inventory
-        : [];
-      setInventory(list);
+      const [inventoryRes, itemsRes, farmersRes, contactsRes] = await Promise.allSettled([
+        getMillerInventory(token),
+        getItems(token),
+        getFarmers(token),
+        getMillerCommissiondars(token),
+      ]);
+
+      if (farmersRes.status === 'fulfilled' && farmersRes.value) {
+        const rawF = Array.isArray(farmersRes.value)
+          ? farmersRes.value
+          : farmersRes.value?.farmers || [];
+        setFarmers(rawF);
+      }
+
+      if (contactsRes.status === 'fulfilled' && contactsRes.value) {
+        const rawC = Array.isArray(contactsRes.value)
+          ? contactsRes.value
+          : contactsRes.value?.contacts || [];
+        setContacts(rawC);
+      }
+
+      const rawInventory =
+        inventoryRes.status === 'fulfilled' && inventoryRes.value
+          ? Array.isArray(inventoryRes.value)
+            ? inventoryRes.value
+            : Array.isArray(inventoryRes.value?.inventory)
+            ? inventoryRes.value.inventory
+            : []
+          : [];
+
+      const rawItems =
+        itemsRes.status === 'fulfilled' && itemsRes.value
+          ? Array.isArray(itemsRes.value)
+            ? itemsRes.value
+            : Array.isArray(itemsRes.value?.items)
+            ? itemsRes.value.items
+            : []
+          : [];
+
+      // Read local exports to include offline/direct dispatches
+      let localExports = [];
+      if (storageKey) {
+        try {
+          localExports = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        } catch {}
+      }
+
+      // Fetch movements for each item to compute true live stock if backend scalar is zero
+      const itemsToFetch = rawItems.filter(i => Boolean(i.id));
+      const movementResults = await Promise.allSettled(
+        itemsToFetch.map(item =>
+          getMillerInventoryMovements(item.id, { limit: 100 }, token).catch(() => null)
+        )
+      );
+
+      const itemMovementsMap = new Map();
+      itemsToFetch.forEach((item, idx) => {
+        const res = movementResults[idx];
+        const val = res && res.status === 'fulfilled' ? res.value : null;
+        const list = Array.isArray(val) ? val : Array.isArray(val?.movements) ? val.movements : [];
+
+        let received = 0;
+        let dispatched = 0;
+
+        list.forEach(m => {
+          if (m.is_void) return;
+          const qty = Math.abs(Number(m.quantity || 0));
+          const type = String(m.movement_type || '').toLowerCase();
+          const isIntake =
+            type.includes('purchase') ||
+            type.includes('intake') ||
+            type.includes('receive') ||
+            type.includes('buy') ||
+            type.includes('inward') ||
+            type.includes('in');
+
+          if (isIntake) {
+            received += qty;
+          } else {
+            dispatched += qty;
+          }
+        });
+
+        // Add local export shipments for this grain item
+        const localExportQty = localExports
+          .filter(e => Number(e.itemId) === Number(item.id))
+          .reduce((acc, e) => acc + Number(e.quantity || 0), 0);
+
+        dispatched += localExportQty;
+
+        itemMovementsMap.set(Number(item.id), {
+          received,
+          dispatched,
+          stock: received - dispatched,
+        });
+      });
+
+      // Map raw items by id and name for quick enrichment
+      const itemById = new Map();
+      const itemByName = new Map();
+      rawItems.forEach(i => {
+        if (i.id) itemById.set(Number(i.id), i);
+        if (i.name) itemByName.set(String(i.name).trim().toLowerCase(), i);
+      });
+
+      // Normalize each inventory record
+      const enriched = rawInventory.map((item, idx) => {
+        const directId = item.id ?? item.item_id ?? item.grain_id;
+        const matchedItem = directId
+          ? itemById.get(Number(directId))
+          : (item.name ? itemByName.get(String(item.name).trim().toLowerCase()) : null);
+
+        const id = directId ?? matchedItem?.id;
+        const name = item.name || matchedItem?.name || item.category || `Grain Item #${idx + 1}`;
+        const category = item.category || matchedItem?.category || '—';
+        const unit = item.unit || matchedItem?.unit || 'quintal';
+
+        const movData = id ? itemMovementsMap.get(Number(id)) : null;
+        const backendReceived = Number(item.total_received ?? item.received ?? 0);
+        const backendDispatched = Number(item.total_dispatched ?? item.dispatched ?? 0);
+        const backendStock = Number(item.available_stock ?? item.stock ?? 0);
+
+        const total_received = backendReceived > 0 ? backendReceived : (movData?.received ?? 0);
+        const total_dispatched = backendDispatched > 0 ? backendDispatched : (movData?.dispatched ?? 0);
+        const available_stock = backendStock !== 0 ? backendStock : (total_received - total_dispatched);
+
+        return {
+          ...item,
+          id,
+          item_id: id,
+          name,
+          category,
+          unit,
+          total_received,
+          total_dispatched,
+          available_stock,
+          is_active: item.is_active !== false && matchedItem?.is_active !== false,
+        };
+      });
+
+      // Also ensure registered items not yet in inventory show with accurate stock
+      const existingIds = new Set(enriched.map(e => e.id).filter(Boolean));
+      rawItems.forEach(i => {
+        if (i.id && !existingIds.has(i.id)) {
+          const movData = itemMovementsMap.get(Number(i.id));
+          const total_received = movData?.received ?? 0;
+          const total_dispatched = movData?.dispatched ?? 0;
+          const available_stock = total_received - total_dispatched;
+
+          enriched.push({
+            id: i.id,
+            item_id: i.id,
+            name: i.name,
+            category: i.category || '—',
+            unit: i.unit || 'quintal',
+            total_received,
+            total_dispatched,
+            available_stock,
+            is_active: i.is_active !== false,
+          });
+        }
+      });
+
+      setInventory(enriched);
     } catch (err) {
       setError(describeError(err));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, storageKey]);
 
   useEffect(() => {
     loadInventory();
@@ -76,13 +261,19 @@ export default function MillerInventory() {
   // Load Movements for Selected Grain
   const loadMovements = useCallback(
     async (item, offset = 0) => {
-      if (!token || !item) return;
+      const itemId = item?.id ?? item?.item_id;
+      if (!token || !itemId) {
+        setMovements([]);
+        setMovementsTotal(0);
+        setMovementsLoading(false);
+        return;
+      }
       setMovementsLoading(true);
       setMovementsError('');
 
       try {
         const res = await getMillerInventoryMovements(
-          item.id,
+          itemId,
           { limit: MOVEMENTS_PAGE_SIZE, offset },
           token
         );
@@ -112,6 +303,10 @@ export default function MillerInventory() {
 
   // Trigger movement load when selected item changes
   const handleSelectItem = item => {
+    if (!item?.id && !item?.item_id) {
+      setMovementsError('Cannot view movements: grain item identifier is missing.');
+      return;
+    }
     setSelectedItem(item);
     setMovementsOffset(0);
     loadMovements(item, 0);
@@ -136,7 +331,7 @@ export default function MillerInventory() {
     loadMovements(selectedItem, prevOffset);
   };
 
-  // Summary Metrics directly from backend inventory records
+  // Summary Metrics directly from inventory records
   const metrics = useMemo(() => {
     let totalReceived = 0;
     let totalDispatched = 0;
@@ -155,6 +350,54 @@ export default function MillerInventory() {
       totalStock,
     };
   }, [inventory]);
+
+  // Dynamically recomputed summary for selected item
+  const selectedMovementsSummary = useMemo(() => {
+    if (!selectedItem) return { received: 0, dispatched: 0, stock: 0 };
+
+    let received = 0;
+    let dispatched = 0;
+
+    movements.forEach(m => {
+      if (m.is_void) return;
+      const qty = Math.abs(Number(m.quantity || 0));
+      const type = String(m.movement_type || '').toLowerCase();
+      const isIntake =
+        type.includes('purchase') ||
+        type.includes('intake') ||
+        type.includes('receive') ||
+        type.includes('buy') ||
+        type.includes('inward') ||
+        type.includes('in');
+
+      if (isIntake) {
+        received += qty;
+      } else {
+        dispatched += qty;
+      }
+    });
+
+    // Check local exports for this item
+    let localExports = [];
+    if (storageKey) {
+      try {
+        localExports = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      } catch {}
+    }
+    const exportDispatched = localExports
+      .filter(e => Number(e.itemId) === Number(selectedItem.id || selectedItem.item_id))
+      .reduce((acc, e) => acc + Number(e.quantity || 0), 0);
+
+    const totalDis = dispatched + exportDispatched;
+    const totalRec = received > 0 ? received : Number(selectedItem.total_received || 0);
+    const netStock = totalRec - totalDis;
+
+    return {
+      received: totalRec,
+      dispatched: totalDis,
+      stock: netStock,
+    };
+  }, [selectedItem, movements, storageKey]);
 
   // Filtered inventory list
   const filteredInventory = useMemo(() => {
@@ -369,29 +612,24 @@ export default function MillerInventory() {
                 margin: '4px 0 0',
               }}
             >
-              Real-time stock calculated by backend from verified intake and
-              export movements.
+              Real-time stock calculated from verified intake receipts and export dispatches.
             </p>
           </div>
 
-          {/* Search & Filter Toolbar */}
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 10,
-              alignItems: 'center',
-            }}
-          >
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <input
               type="text"
               placeholder="Search inventory..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
-                maxWidth: 220,
-                padding: '8px 12px',
-                fontSize: '0.88rem',
+                padding: '8px 14px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                fontSize: '0.9rem',
+                minWidth: 180,
               }}
             />
 
@@ -400,11 +638,15 @@ export default function MillerInventory() {
               onChange={e => setStatusFilter(e.target.value)}
               style={{
                 padding: '8px 12px',
-                fontSize: '0.88rem',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                fontSize: '0.9rem',
               }}
             >
               <option value="all">All Varieties</option>
-              <option value="in_stock">In Stock Only (&gt; 0)</option>
+              <option value="in_stock">In Stock (&gt;0)</option>
               <option value="active">Active Only</option>
               <option value="inactive">Inactive Only</option>
             </select>
@@ -414,8 +656,7 @@ export default function MillerInventory() {
               className="btn btn-secondary"
               onClick={loadInventory}
               disabled={loading}
-              title="Refresh inventory"
-              style={{ padding: '8px 14px', fontSize: '0.88rem' }}
+              style={{ padding: '8px 16px', fontSize: '0.9rem' }}
             >
               ↻ Refresh
             </button>
@@ -482,35 +723,42 @@ export default function MillerInventory() {
                 </tr>
               </thead>
               <tbody>
-                {filteredInventory.map(item => {
+                {filteredInventory.map((item, idx) => {
                   const isActive = item.is_active !== false;
                   const received = Number(item.total_received || 0);
                   const dispatched = Number(item.total_dispatched || 0);
                   const available = Number(item.available_stock || 0);
-                  const isSelected = selectedItem?.id === item.id;
+                  const itemKey = item.id ? `item-${item.id}` : `inv-${idx}-${item.name || item.category}`;
+                  const isSelected = Boolean(selectedItem && item.id && (selectedItem.id || selectedItem.item_id) === item.id);
+                  const hasId = Boolean(item.id || item.item_id);
 
                   return (
                     <tr
-                      key={item.id}
+                      key={itemKey}
                       style={{
                         borderBottom: '1px solid rgba(255,255,255,0.05)',
                         backgroundColor: isSelected
                           ? 'rgba(34, 197, 94, 0.08)'
                           : 'transparent',
-                        opacity: isActive ? 1 : 0.75,
                       }}
                     >
-                      <td style={{ padding: '14px', fontWeight: 650 }}>
-                        <span
-                          style={{
-                            color: isActive ? 'var(--ink)' : 'var(--muted)',
-                          }}
-                        >
-                          {item.name}
-                        </span>
+                      <td
+                        style={{
+                          padding: '14px',
+                          fontWeight: 650,
+                          color: 'var(--ink)',
+                        }}
+                      >
+                        {item.name}
                       </td>
-                      <td style={{ padding: '14px', color: 'var(--muted)' }}>
-                        {item.category || '—'}
+                      <td
+                        style={{
+                          padding: '14px',
+                          color: 'var(--muted)',
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {item.category}
                       </td>
                       <td style={{ padding: '14px' }}>
                         <span
@@ -601,6 +849,8 @@ export default function MillerInventory() {
                               : 'btn btn-secondary'
                           }
                           onClick={() => handleSelectItem(item)}
+                          disabled={!hasId}
+                          title={!hasId ? 'Item identifier not available for movements' : 'View stock movements'}
                           style={{
                             padding: '6px 14px',
                             fontSize: '0.82rem',
@@ -669,7 +919,7 @@ export default function MillerInventory() {
                     padding: '3px 9px',
                     borderRadius: 12,
                     fontSize: '0.78rem',
-                    fontWeight: 600,
+                    fontWeight: 650,
                     background:
                       selectedItem.is_active !== false
                         ? 'rgba(34, 197, 94, 0.15)'
@@ -692,11 +942,11 @@ export default function MillerInventory() {
               >
                 Available balance:{' '}
                 <strong style={{ color: 'var(--gold, #f59e0b)' }}>
-                  {formatNumber(selectedItem.available_stock)}{' '}
+                  {formatNumber(selectedMovementsSummary.stock)}{' '}
                   {selectedItem.unit || 'quintal'}
                 </strong>{' '}
-                • Total Received: {formatNumber(selectedItem.total_received)} •
-                Total Dispatched: {formatNumber(selectedItem.total_dispatched)}
+                • Total Received: {formatNumber(selectedMovementsSummary.received)} •{' '}
+                Total Dispatched: {formatNumber(selectedMovementsSummary.dispatched)}
               </p>
             </div>
 
@@ -770,10 +1020,10 @@ export default function MillerInventory() {
                         Rate
                       </th>
                       <th style={{ textAlign: 'left', padding: '12px 14px' }}>
-                        Party ID
+                        Party (Farmer)
                       </th>
                       <th style={{ textAlign: 'left', padding: '12px 14px' }}>
-                        Broker ID
+                        Broker / Contact
                       </th>
                       <th style={{ textAlign: 'left', padding: '12px 14px' }}>
                         Notes
@@ -786,17 +1036,34 @@ export default function MillerInventory() {
                   <tbody>
                     {movements.map(m => {
                       const isVoid = Boolean(m.is_void);
+                      const type = String(m.movement_type || '').toLowerCase();
                       const isIntake =
-                        String(m.movement_type || '')
-                          .toLowerCase()
-                          .includes('intake') ||
-                        String(m.movement_type || '')
-                          .toLowerCase()
-                          .includes('receive');
+                        type.includes('purchase') ||
+                        type.includes('intake') ||
+                        type.includes('receive') ||
+                        type.includes('buy') ||
+                        type.includes('inward') ||
+                        type.includes('in');
+
+                      const partyName =
+                        farmerMap[m.party_id] ||
+                        farmerMap[m.farmer_id] ||
+                        (m.party_id ? `Farmer #${m.party_id}` : '—');
+
+                      const brokerName =
+                        brokerMap[m.broker_id] ||
+                        (m.broker_id ? `Broker #${m.broker_id}` : '—');
+
+                      const dateVal =
+                        m.timestamp ||
+                        m.created_at ||
+                        m.date ||
+                        m.time ||
+                        m.recorded_at;
 
                       return (
                         <tr
-                          key={m.id || `${m.created_at}-${m.quantity}`}
+                          key={m.id || `${dateVal}-${m.quantity}`}
                           style={{
                             borderBottom: '1px solid rgba(255,255,255,0.05)',
                             backgroundColor: isVoid
@@ -814,7 +1081,7 @@ export default function MillerInventory() {
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {formatDate(m.created_at || m.date)}
+                            {formatDate(dateVal)}
                           </td>
                           <td style={{ padding: '12px 14px' }}>
                             <span
@@ -870,11 +1137,12 @@ export default function MillerInventory() {
                           <td
                             style={{
                               padding: '12px 14px',
-                              color: 'var(--muted)',
+                              color: 'var(--ink)',
                               fontSize: '0.88rem',
+                              fontWeight: 600,
                             }}
                           >
-                            {m.party_id ? `#${m.party_id}` : '—'}
+                            {partyName}
                           </td>
                           <td
                             style={{
@@ -883,7 +1151,7 @@ export default function MillerInventory() {
                               fontSize: '0.88rem',
                             }}
                           >
-                            {m.broker_id ? `#${m.broker_id}` : '—'}
+                            {brokerName}
                           </td>
                           <td
                             style={{

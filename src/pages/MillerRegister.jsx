@@ -3,6 +3,22 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { registerMiller, describeError } from '../api';
 
+const EyeIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const EyeOffIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
 function MillerRegister() {
   const [form, setForm] = useState({
     name: '',
@@ -114,7 +130,7 @@ function MillerRegister() {
               required
             />
 
-            <div style={{ position: 'relative' }}>
+            <div className="input-with-toggle" style={{ position: 'relative' }}>
               <input
                 type={showPassword ? 'text' : 'password'}
                 name="password"
@@ -122,30 +138,17 @@ function MillerRegister() {
                 value={form.password}
                 onChange={handleChange}
                 disabled={loading}
-                style={{ paddingRight: 40 }}
+                style={{ paddingRight: 42 }}
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(prev => !prev)}
                 title={showPassword ? 'Hide password' : 'Show password'}
-                style={{
-                  position: 'absolute',
-                  right: 12,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--muted)',
-                  cursor: 'pointer',
-                  fontSize: 16,
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="password-toggle-btn"
               >
-                {showPassword ? '👁️' : '🔒'}
+                {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
               </button>
             </div>
 
