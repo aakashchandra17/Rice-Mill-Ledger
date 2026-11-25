@@ -8,8 +8,8 @@ function CommissiondarRegister() {
     name: '',
     phone: '',
     password: '',
-    secondPassword: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -30,13 +30,8 @@ function CommissiondarRegister() {
       return;
     }
 
-    if (!form.password || !form.secondPassword) {
-      setError('Please enter both login passwords.');
-      return;
-    }
-
-    if (form.password === form.secondPassword) {
-      setError('Please use two different passwords.');
+    if (!form.password) {
+      setError('Please enter a login password.');
       return;
     }
 
@@ -47,7 +42,6 @@ function CommissiondarRegister() {
         name: form.name.trim(),
         phone: form.phone.trim(),
         password: form.password,
-        secondPassword: form.secondPassword,
       });
 
       setSuccess(true);
@@ -108,25 +102,40 @@ function CommissiondarRegister() {
               required
             />
 
-            <input
-              type="password"
-              name="password"
-              placeholder="Login Password"
-              value={form.password}
-              onChange={handleChange}
-              disabled={loading}
-              required
-            />
-
-            <input
-              type="password"
-              name="secondPassword"
-              placeholder="Second Login Password"
-              value={form.secondPassword}
-              onChange={handleChange}
-              disabled={loading}
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                placeholder="Login Password"
+                value={form.password}
+                onChange={handleChange}
+                disabled={loading}
+                style={{ paddingRight: 40 }}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(prev => !prev)}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  fontSize: 16,
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showPassword ? '👁️' : '🔒'}
+              </button>
+            </div>
 
             <button type="submit" disabled={loading}>
               {loading ? 'Submitting registration...' : 'Register as Commissiondar'}

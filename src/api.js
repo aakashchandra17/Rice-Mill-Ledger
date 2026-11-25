@@ -93,9 +93,9 @@ async function request(path, { method = 'GET', body, token } = {}) {
   return data;
 }
 
-// STEP 1: Verify phone and both passwords.
+// STEP 1: Verify phone and password.
 // Backend endpoint: POST /api/login
-export async function login(phone, password, secondPassword) {
+export async function login(phone, password) {
   ensureApiUrl();
 
   const res = await fetch(`${BASE_URL}/api/login`, {
@@ -104,7 +104,6 @@ export async function login(phone, password, secondPassword) {
     body: JSON.stringify({
       phone,
       password,
-      second_password: secondPassword,
     }),
   });
 
@@ -368,7 +367,6 @@ export const registerMiller = ({
   phone,
   businessName,
   password,
-  secondPassword,
 }) =>
   request('/register/miller', {
     method: 'POST',
@@ -377,7 +375,6 @@ export const registerMiller = ({
       phone,
       business_name: businessName,
       password,
-      second_password: secondPassword,
     },
   });
 
@@ -385,7 +382,6 @@ export const registerCommissiondar = ({
   name,
   phone,
   password,
-  secondPassword,
 }) =>
   request('/register/commissiondar', {
     method: 'POST',
@@ -393,7 +389,6 @@ export const registerCommissiondar = ({
       name,
       phone,
       password,
-      second_password: secondPassword,
     },
   });
 
@@ -441,6 +436,14 @@ export function describeError(err) {
 
   if (err?.status === 409) {
     return err?.message || 'A record with this name or identifier already exists.';
+  }
+
+  if (err?.status >= 500) {
+    return err?.message || 'Internal server error (500). Please try again later.';
+  }
+
+  if (err?.message === 'Failed to fetch') {
+    return 'Unable to reach the server. Please check your internet connection.';
   }
 
   return err?.message || 'Something went wrong. Please try again.';

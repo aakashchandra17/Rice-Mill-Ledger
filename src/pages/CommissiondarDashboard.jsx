@@ -30,7 +30,7 @@ const formatDate = value => {
 };
 
 export default function CommissiondarDashboard() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

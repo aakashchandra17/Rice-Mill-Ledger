@@ -32,7 +32,7 @@ const formatDate = value => {
 };
 
 export default function CommissiondarStock() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [stock, setStock] = useState(null);
   const [farmers, setFarmers] = useState([]);

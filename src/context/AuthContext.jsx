@@ -47,12 +47,11 @@ export function AuthProvider({ children }) {
     return () => setUnauthorizedHandler(() => {});
   }, []);
 
-  // STEP 1: Verify passwords and request OTP challenge.
-  const login = async (phone, password, secondPassword, loginType) => {
+  // STEP 1: Verify credentials and request OTP challenge.
+  const login = async (phone, password, loginType) => {
     const result = await apiLogin(
       phone,
-      password,
-      secondPassword
+      password
     );
 
     const loginDetails = {

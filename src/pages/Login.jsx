@@ -165,7 +165,7 @@ export default function Login() {
   const [loginType, setLoginType] = useState('owner');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [secondPassword, setSecondPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [otpStage, setOtpStage] = useState(false);
   const [msg91Status, setMsg91Status] = useState('');
   const [errors, setErrors] = useState({});
@@ -192,7 +192,6 @@ export default function Login() {
     setMsg91Status('');
     setErrors({});
     setPassword('');
-    setSecondPassword('');
   };
 
   // STEP 1: Submit credentials and request backend challenge.
@@ -207,11 +206,7 @@ export default function Login() {
     }
 
     if (!password.trim()) {
-      found.password = 'Please enter your first password.';
-    }
-
-    if (!secondPassword.trim()) {
-      found.secondPassword = 'Please enter your second password.';
+      found.password = 'Please enter your password.';
     }
 
     setErrors(found);
@@ -222,7 +217,7 @@ export default function Login() {
     verificationStarted.current = false;
 
     try {
-      await login(phone, password, secondPassword, loginType);
+      await login(phone, password, loginType);
 
       setOtpStage(true);
       setMsg91Status('opening');
@@ -439,13 +434,13 @@ export default function Login() {
             </div>
 
             <div>
-              <div className={`lfield ${errors.password ? 'invalid' : ''}`}>
-                <label htmlFor="password">First Password</label>
+              <div className={`lfield ${errors.password ? 'invalid' : ''}`} style={{ position: 'relative' }}>
+                <label htmlFor="password">Password</label>
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  placeholder="Enter first password"
+                  placeholder="Enter password"
                   value={password}
                   onChange={e => {
                     setPassword(e.target.value);
@@ -455,35 +450,32 @@ export default function Login() {
                       form: undefined,
                     }));
                   }}
+                  style={{ paddingRight: 40 }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(prev => !prev)}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    bottom: 12,
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--muted)',
+                    cursor: 'pointer',
+                    fontSize: 16,
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {showPassword ? '👁️' : '🔒'}
+                </button>
               </div>
 
               {errors.password && <div className="lerror">{errors.password}</div>}
-            </div>
-
-            <div>
-              <div className={`lfield ${errors.secondPassword ? 'invalid' : ''}`}>
-                <label htmlFor="secondPassword">Second Password</label>
-                <input
-                  id="secondPassword"
-                  type="password"
-                  autoComplete="off"
-                  placeholder="Enter second password"
-                  value={secondPassword}
-                  onChange={e => {
-                    setSecondPassword(e.target.value);
-                    setErrors(prev => ({
-                      ...prev,
-                      secondPassword: undefined,
-                      form: undefined,
-                    }));
-                  }}
-                />
-              </div>
-
-              {errors.secondPassword && (
-                <div className="lerror">{errors.secondPassword}</div>
-              )}
             </div>
 
             {errors.form && (

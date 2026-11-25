@@ -202,7 +202,6 @@ export default function CommissiondarMills() {
 
     try {
       await addFarmerToCommissiondarMill(associatingMill.id, fId, token);
-      // Refresh this mill's farmer list
       const res = await getCommissiondarMillFarmers(associatingMill.id, token);
       const list = Array.isArray(res) ? res : res?.farmers || res?.items || [];
       setMillFarmersMap(prev => ({ ...prev, [associatingMill.id]: list }));
@@ -222,11 +221,10 @@ export default function CommissiondarMills() {
 
     try {
       await removeFarmerFromCommissiondarMill(millId, farmerId, token);
-      // Refresh this mill's farmer list
       const res = await getCommissiondarMillFarmers(millId, token);
       const list = Array.isArray(res) ? res : res?.farmers || res?.items || [];
       setMillFarmersMap(prev => ({ ...prev, [millId]: list }));
-      setSuccess('✓ Farmer association removed from mill (farmer remains in directory).');
+      setSuccess('✓ Association removed.');
     } catch (err) {
       setAssocError(describeError(err));
     } finally {
