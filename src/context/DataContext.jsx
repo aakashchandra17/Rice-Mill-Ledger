@@ -279,3 +279,7 @@ export function useData() {
   const context = useContext(DataContext);
   return context || {};
 }
+
+// Aliases for explicit domain isolation
+export const MillerDataProvider = DataProvider;
+export const useMillerData = useData;

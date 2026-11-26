@@ -284,7 +284,13 @@ export default function CommissiondarFarmers() {
                       <strong style={{ color: 'var(--gold)' }}>#{f.id}</strong>
                     </td>
                     <td>
-                      <strong style={{ color: 'var(--ink)' }}>{f.name}</strong>
+                      <Link
+                        to={`/commissiondar/farmers/${f.id}`}
+                        style={{ color: 'var(--ink)', textDecoration: 'none', fontWeight: 700 }}
+                        title="Open farmer dashboard"
+                      >
+                        {f.name}
+                      </Link>
                     </td>
                     <td style={{ color: 'var(--ink-soft)' }}>
                       📍 {f.village || 'Not specified'}
@@ -295,7 +301,14 @@ export default function CommissiondarFarmers() {
                     <td>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <Link
-                          className="btn btn-small"
+                          className="btn btn-primary btn-small"
+                          to={`/commissiondar/farmers/${f.id}`}
+                          title="Open dedicated farmer dashboard"
+                        >
+                          👤 View Dashboard
+                        </Link>
+                        <Link
+                          className="btn btn-ghost btn-small"
                           to="/commissiondar/stock"
                           title="Record grain inflow from this farmer"
                         >

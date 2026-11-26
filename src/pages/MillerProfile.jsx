@@ -68,7 +68,7 @@ export default function MillerProfile() {
             <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', textTransform: 'uppercase' }}>
               Security & Auth
             </span>
-            <strong style={{ fontSize: '1.05rem', color: 'var(--gold)' }}>MSG91 Dual Password</strong>
+            <strong style={{ fontSize: '1.05rem', color: 'var(--gold)' }}>One Password + OTP</strong>
           </div>
         </div>
       </div>

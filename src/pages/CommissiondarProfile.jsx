@@ -189,7 +189,7 @@ export default function CommissiondarProfile() {
               Security Protocol
             </span>
             <strong style={{ fontSize: '1.05rem', color: 'var(--green-light)' }}>
-              Dual Password + OTP
+              One Password + OTP
             </strong>
           </div>
         </div>
