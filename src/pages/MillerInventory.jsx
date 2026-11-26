@@ -130,8 +130,26 @@ export default function MillerInventory() {
         } catch {}
       }
 
-      // Fetch movements for each item to compute true live stock if backend scalar is zero
-      const itemsToFetch = rawItems.filter(i => Boolean(i.id));
+      // Fetch movements for each item from rawItems and rawInventory to compute true live stock
+      const allItemIds = new Set();
+      const itemsToFetch = [];
+
+      rawItems.forEach(i => {
+        const id = i.id ?? i.item_id;
+        if (id && !allItemIds.has(Number(id))) {
+          allItemIds.add(Number(id));
+          itemsToFetch.push({ id: Number(id), name: i.name });
+        }
+      });
+
+      rawInventory.forEach(inv => {
+        const id = inv.id ?? inv.item_id ?? inv.grain_id;
+        if (id && !allItemIds.has(Number(id))) {
+          allItemIds.add(Number(id));
+          itemsToFetch.push({ id: Number(id), name: inv.name });
+        }
+      });
+
       const movementResults = await Promise.allSettled(
         itemsToFetch.map(item =>
           getMillerInventoryMovements(item.id, { limit: 100 }, token).catch(() => null)
@@ -1055,8 +1073,12 @@ export default function MillerInventory() {
                         (m.broker_id ? `Broker #${m.broker_id}` : '—');
 
                       const dateVal =
-                        m.timestamp ||
                         m.created_at ||
+                        m.timestamp ||
+                        m.movement_date ||
+                        m.transaction_date ||
+                        m.intake_date ||
+                        m.created_date ||
                         m.date ||
                         m.time ||
                         m.recorded_at;
@@ -1114,7 +1136,7 @@ export default function MillerInventory() {
                             }}
                           >
                             {isIntake ? '+' : '-'}
-                            {formatNumber(m.quantity)}{' '}
+                            {formatNumber(Math.abs(Number(m.quantity || 0)))}{' '}
                             <span
                               style={{
                                 fontSize: '0.78rem',

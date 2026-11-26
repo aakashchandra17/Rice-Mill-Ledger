@@ -187,29 +187,59 @@ export default function CommissiondarStock() {
 
     history.forEach(m => {
       const gId = m.grain_type_id || m.grainTypeId || m.item_id;
-      const qty = Number(m.quantity || 0);
-      const isReceive = m.movement_type === 'receive' || m.type === 'receive';
+      const mType = String(m.movement_type || m.type || '').toLowerCase();
+      const isReceive =
+        mType === 'receive' ||
+        mType === 'received_from_farmer' ||
+        mType.includes('receive') ||
+        mType.includes('inward');
+      const isDeliver =
+        mType === 'deliver' ||
+        mType === 'delivered_to_mill' ||
+        mType.includes('deliver') ||
+        mType.includes('dispatch') ||
+        mType.includes('outward');
+      const qty = Math.abs(Number(m.quantity || 0));
 
-      if (gId && summary[gId]) {
-        if (isReceive) summary[gId].received += qty;
-        else summary[gId].delivered += qty;
+      if (gId) {
+        if (!summary[gId]) {
+          summary[gId] = {
+            grainId: gId,
+            grainName: m.grain_name || m.grainName || grainTypeMap[gId] || `Grain #${gId}`,
+            unit: m.unit || 'quintal',
+            received: 0,
+            delivered: 0,
+            available: 0,
+          };
+        }
+        if (isReceive) {
+          summary[gId].received += qty;
+        } else if (isDeliver) {
+          summary[gId].delivered += qty;
+        }
         summary[gId].available = Math.max(0, summary[gId].received - summary[gId].delivered);
       }
     });
 
     return Object.values(summary);
-  }, [grainTypes, history]);
+  }, [grainTypes, history, grainTypeMap]);
 
   // Calculate Deliveries Grouped by Mill from history
   const deliveriesByMill = useMemo(() => {
     const map = {};
 
     history.forEach(m => {
-      const isDeliver = m.movement_type === 'deliver' || m.type === 'deliver';
+      const mType = String(m.movement_type || m.type || '').toLowerCase();
+      const isDeliver =
+        mType === 'deliver' ||
+        mType === 'delivered_to_mill' ||
+        mType.includes('deliver') ||
+        mType.includes('dispatch') ||
+        mType.includes('outward');
       if (!isDeliver) return;
 
       const mName = m.mill_name || m.millName || 'Unspecified Mill';
-      const qty = Number(m.quantity || 0);
+      const qty = Math.abs(Number(m.quantity || 0));
 
       if (!map[mName]) {
         map[mName] = {
@@ -226,15 +256,25 @@ export default function CommissiondarStock() {
     return Object.values(map);
   }, [history]);
 
+  // Yard stock metrics
+  const totalReceived = Number(stock?.total_received ?? stock?.received ?? stock?.totalReceived ?? 0);
+  const totalDelivered = Number(stock?.total_delivered ?? stock?.delivered ?? stock?.totalDelivered ?? 0);
+  const currentStock = Number(
+    stock?.current_stock ?? stock?.currentStock ?? Math.max(0, totalReceived - totalDelivered)
+  );
+
   // Available stock for selected delivery grain
   const availableForSelectedGrain = useMemo(() => {
     if (!deliverGrainTypeId) {
       // Return total stock if no specific grain selected
-      return Number(stock?.current_stock ?? stock?.currentStock ?? 0);
+      return currentStock;
     }
     const found = stockByGrain.find(g => String(g.grainId) === String(deliverGrainTypeId));
-    return found ? found.available : 0;
-  }, [deliverGrainTypeId, stockByGrain, stock]);
+    if (found && (found.received > 0 || found.available > 0)) {
+      return found.available;
+    }
+    return currentStock;
+  }, [deliverGrainTypeId, stockByGrain, currentStock]);
 
   // Handle Receive Stock Submission
   async function handleReceive(event) {
@@ -348,10 +388,6 @@ export default function CommissiondarStock() {
       setBusy(false);
     }
   }
-
-  const currentStock = stock?.current_stock ?? stock?.currentStock ?? 0;
-  const totalReceived = stock?.total_received ?? stock?.totalReceived ?? 0;
-  const totalDelivered = stock?.total_delivered ?? stock?.totalDelivered ?? 0;
 
   return (
     <div className="commissiondar-stock-page" style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -840,7 +876,12 @@ export default function CommissiondarStock() {
                 </thead>
                 <tbody>
                   {history.map((item, index) => {
-                    const isReceive = item.movement_type === 'receive' || item.type === 'receive';
+                    const mType = String(item.movement_type || item.type || '').toLowerCase();
+                    const isReceive =
+                      mType === 'receive' ||
+                      mType === 'received_from_farmer' ||
+                      mType.includes('receive') ||
+                      mType.includes('inward');
                     const fName =
                       farmerMap[item.farmer_id] ||
                       item.farmer_name ||

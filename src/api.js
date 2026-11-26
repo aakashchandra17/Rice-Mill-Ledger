@@ -291,6 +291,9 @@ export const deliverCommissiondarStock = (data, token) =>
 export const getCommissiondarFarmers = token =>
   request('/commissiondar/farmers', { token });
 
+export const getCommissiondarFarmerDashboard = (farmerId, token) =>
+  request(`/commissiondar/farmers/${farmerId}/dashboard`, { token });
+
 export const createCommissiondarFarmer = (data, token) =>
   request('/commissiondar/farmers', { method: 'POST', body: data, token });
 
