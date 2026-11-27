@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { registerMiller, describeError } from '../api';
+import { GrainStalkIcon, TrendingUpIcon, SiloStorageIcon } from '../components/AgriIcons';
 
 const EyeIcon = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -71,98 +72,193 @@ function MillerRegister() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <h1>GRAIN LEDGER</h1>
-        <p>RICE MILL MANAGEMENT</p>
+    <div className="split-auth-wrap">
+      {/* Left side: Branding */}
+      <div className="split-auth-brand">
+        <div className="split-brand-header">
+          <div className="split-brand-logo">
+            <GrainStalkIcon size={26} color="#f59e0b" />
+          </div>
+          <div>
+            <div className="split-brand-title">GRAIN LEDGER</div>
+            <div className="split-brand-subtitle">Smart Agricultural ERP</div>
+          </div>
+        </div>
 
-        <h2>Miller Registration</h2>
-        <p>Create your rice mill account.</p>
-
-        {error && (
-          <p style={{ color: '#e53e3e', background: 'rgba(229,62,62,0.1)', padding: '10px 14px', borderRadius: 6, fontSize: 13 }}>
-            {error}
+        <div className="split-brand-hero">
+          <div className="split-brand-tagline-badge">
+            <span className="dot" />
+            Miller Onboarding
+          </div>
+          <h1 className="split-brand-h1">
+            Empower Your <span>Rice Milling Operations.</span>
+          </h1>
+          <p className="split-brand-desc">
+            Register your rice mill to manage daily farmer intakes, track live milling stock, handle broker commissions, and generate audited export ledgers.
           </p>
-        )}
 
-        {success ? (
-          <div style={{ textAlign: 'center', padding: '16px 0' }}>
-            <p style={{ color: '#38a169', fontSize: 16, fontWeight: 600 }}>
-              ✓ Registration submitted successfully!
+          <div className="split-brand-features">
+            <div className="split-feature-item">
+              <div className="split-feature-icon-badge">
+                <TrendingUpIcon size={19} color="#34d399" />
+              </div>
+              <div className="split-feature-text">
+                <strong>Intake Ledgers</strong>
+                <span>Direct intake with moisture & deduction calculations.</span>
+              </div>
+            </div>
+            <div className="split-feature-item">
+              <div className="split-feature-icon-badge" style={{ background: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.25)', color: '#f59e0b' }}>
+                <SiloStorageIcon size={19} color="#f59e0b" />
+              </div>
+              <div className="split-feature-text">
+                <strong>Silo Stock Tracking</strong>
+                <span>Real-time balance of paddy varieties & milled rice.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="split-brand-footer">
+          <span>© {new Date().getFullYear()} Grain Ledger Systems</span>
+          <span>Verified Mill Registration</span>
+        </div>
+      </div>
+
+      {/* Right side: Registration Form Card */}
+      <div className="split-auth-form-side">
+        <div className="split-form-card">
+          <div style={{ marginBottom: 20, textAlign: 'left' }}>
+            <h2 style={{ margin: '0 0 4px', fontSize: '1.45rem', fontWeight: 800 }}>
+              Miller Registration
+            </h2>
+            <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.86rem' }}>
+              Create your rice mill owner account.
             </p>
-            <p style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.5 }}>
-              Your account has been submitted for administrator review. You can log in once approved.
-            </p>
-            <Link to="/" className="top-logout-button" style={{ display: 'inline-block', marginTop: 12, textDecoration: 'none' }}>
-              Go to Login
+          </div>
+
+          {error && (
+            <div className="lerror lerror-form" role="alert" style={{ marginBottom: 16 }}>
+              {error}
+            </div>
+          )}
+
+          {success ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: 36, marginBottom: 10 }}>✓</div>
+              <h3 style={{ color: 'var(--green-light)', margin: '0 0 8px' }}>
+                Registration Submitted Successfully!
+              </h3>
+              <p style={{ color: 'var(--muted)', fontSize: '0.88rem', lineHeight: 1.6, marginBottom: 20 }}>
+                Your rice mill account has been sent for administrator review. You will be able to log in once your profile is approved.
+              </p>
+              <Link to="/" className="btn btn-primary" style={{ textDecoration: 'none', display: 'inline-flex' }}>
+                Go to Sign In →
+              </Link>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', color: '#cbd5e1', marginBottom: 5, fontWeight: 650 }}>
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  placeholder="e.g. Ramesh Kumar"
+                  value={form.name}
+                  onChange={handleChange}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', color: '#cbd5e1', marginBottom: 5, fontWeight: 650 }}>
+                  10-digit Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  name="phone"
+                  placeholder="9876543210"
+                  value={form.phone}
+                  onChange={handleChange}
+                  maxLength={10}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', color: '#cbd5e1', marginBottom: 5, fontWeight: 650 }}>
+                  Mill / Business Name *
+                </label>
+                <input
+                  type="text"
+                  name="businessName"
+                  placeholder="e.g. Sri Lakshmi Rice Mill"
+                  value={form.businessName}
+                  onChange={handleChange}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', color: '#cbd5e1', marginBottom: 5, fontWeight: 650 }}>
+                  Login Password *
+                </label>
+                <div className="input-with-toggle" style={{ position: 'relative' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    placeholder="Create secure password"
+                    value={form.password}
+                    onChange={handleChange}
+                    disabled={loading}
+                    style={{ paddingRight: 42 }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(prev => !prev)}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="password-toggle-btn"
+                  >
+                    {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={loading}
+                style={{ width: '100%', minHeight: 46, marginTop: 8 }}
+              >
+                {loading ? 'Submitting registration...' : 'Register as Miller →'}
+              </button>
+            </form>
+          )}
+
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '20px',
+            paddingTop: '16px',
+            borderTop: '1px solid rgba(52, 211, 153, 0.15)',
+            fontSize: '0.86rem',
+          }}>
+            <Link to="/register" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
+              ← Change Role
+            </Link>
+            <Link to="/" style={{ color: 'var(--green-glow)', fontWeight: 650, textDecoration: 'none' }}>
+              Already registered? Sign In
             </Link>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <input
-              type="text"
-              name="name"
-              placeholder="Full Name"
-              value={form.name}
-              onChange={handleChange}
-              disabled={loading}
-              required
-            />
-
-            <input
-              type="tel"
-              name="phone"
-              placeholder="10-digit Phone Number"
-              value={form.phone}
-              onChange={handleChange}
-              maxLength={10}
-              disabled={loading}
-              required
-            />
-
-            <input
-              type="text"
-              name="businessName"
-              placeholder="Mill / Business Name"
-              value={form.businessName}
-              onChange={handleChange}
-              disabled={loading}
-              required
-            />
-
-            <div className="input-with-toggle" style={{ position: 'relative' }}>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                placeholder="Login Password"
-                value={form.password}
-                onChange={handleChange}
-                disabled={loading}
-                style={{ paddingRight: 42 }}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(prev => !prev)}
-                title={showPassword ? 'Hide password' : 'Show password'}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="password-toggle-btn"
-              >
-                {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-              </button>
-            </div>
-
-            <button type="submit" disabled={loading}>
-              {loading ? 'Submitting registration...' : 'Register as Miller'}
-            </button>
-          </form>
-        )}
-
-        <p style={{ marginTop: 18 }}>
-          <Link to="/register">Back</Link>
-          {' | '}
-          <Link to="/">Already registered? Login</Link>
-        </p>
+        </div>
       </div>
     </div>
   );

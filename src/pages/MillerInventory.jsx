@@ -8,6 +8,7 @@ import {
   describeError,
 } from '../api';
 import { useAuth } from '../context/AuthContext';
+import GrainSiloContainer from '../components/GrainSiloContainer';
 
 const formatNumber = n => Number(n || 0).toLocaleString('en-IN');
 const formatCurrency = n => {
@@ -440,6 +441,42 @@ export default function MillerInventory() {
     });
   }, [inventory, search, statusFilter]);
 
+  const [selectedSiloGrainId, setSelectedSiloGrainId] = useState('all');
+
+  const siloGrains = useMemo(() => {
+    const list = [{
+      id: 'all',
+      name: 'All Mill Varieties',
+      available: metrics.totalStock,
+      stock: metrics.totalStock,
+      unit: 'quintal',
+      received: metrics.totalReceived,
+      dispatched: metrics.totalDispatched,
+    }];
+
+    inventory.forEach(item => {
+      const id = item.id || item.item_id;
+      if (id) {
+        list.push({
+          id: String(id),
+          name: item.name || `Grain #${id}`,
+          available: Number(item.available_stock || 0),
+          stock: Number(item.available_stock || 0),
+          unit: item.unit || 'quintal',
+          received: Number(item.total_received || 0),
+          dispatched: Number(item.total_dispatched || 0),
+        });
+      }
+    });
+
+    return list;
+  }, [metrics, inventory]);
+
+  const activeSiloGrain = useMemo(() => {
+    if (selectedSiloGrainId === 'all') return siloGrains[0];
+    return siloGrains.find(g => String(g.id) === String(selectedSiloGrainId)) || siloGrains[0];
+  }, [siloGrains, selectedSiloGrainId]);
+
   return (
     <div className="miller-inventory-page">
       {/* Header */}
@@ -462,6 +499,20 @@ export default function MillerInventory() {
           {error}
         </div>
       )}
+
+      {/* 2D Animated Grain Storage Silo Visualizer */}
+      <GrainSiloContainer
+        title="Mill Inventory Silo & Storage"
+        grainName={activeSiloGrain.name}
+        currentStock={activeSiloGrain.available}
+        unit={activeSiloGrain.unit || 'quintal'}
+        totalReceived={activeSiloGrain.received || metrics.totalReceived}
+        totalDelivered={activeSiloGrain.dispatched || metrics.totalDispatched}
+        subtext="Live on-hand storage calculated from audited intake receipts and export movements"
+        availableGrains={siloGrains.length > 1 ? siloGrains : []}
+        selectedGrainId={selectedSiloGrainId}
+        onSelectGrain={setSelectedSiloGrainId}
+      />
 
       {/* KPI Cards */}
       <div

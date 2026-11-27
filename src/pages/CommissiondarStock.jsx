@@ -10,6 +10,13 @@ import {
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/SearchableSelect';
+import GrainSiloContainer from '../components/GrainSiloContainer';
+import {
+  TrendingUpIcon,
+  InwardArrowIcon,
+  OutwardArrowIcon,
+  ClipboardLedgerIcon,
+} from '../components/AgriIcons';
 
 const quantity = value =>
   Number(value || 0).toLocaleString('en-IN');
@@ -260,8 +267,43 @@ export default function CommissiondarStock() {
   const totalReceived = Number(stock?.total_received ?? stock?.received ?? stock?.totalReceived ?? 0);
   const totalDelivered = Number(stock?.total_delivered ?? stock?.delivered ?? stock?.totalDelivered ?? 0);
   const currentStock = Number(
-    stock?.current_stock ?? stock?.currentStock ?? Math.max(0, totalReceived - totalDelivered)
+    stock?.current_stock !== undefined && stock?.current_stock !== null && stock.current_stock > 0
+      ? stock.current_stock
+      : Math.max(0, totalReceived - totalDelivered)
   );
+
+  const [selectedSiloGrainId, setSelectedSiloGrainId] = useState('all');
+
+  const siloGrains = useMemo(() => {
+    const list = [{
+      id: 'all',
+      name: 'All Yard Crops',
+      available: currentStock,
+      stock: currentStock,
+      unit: 'quintal',
+      received: totalReceived,
+      dispatched: totalDelivered,
+    }];
+
+    stockByGrain.forEach(g => {
+      list.push({
+        id: String(g.grainId),
+        name: g.grainName,
+        available: g.available,
+        stock: g.available,
+        unit: g.unit || 'quintal',
+        received: g.received,
+        dispatched: g.delivered,
+      });
+    });
+
+    return list;
+  }, [currentStock, totalReceived, totalDelivered, stockByGrain]);
+
+  const activeSiloGrain = useMemo(() => {
+    if (selectedSiloGrainId === 'all') return siloGrains[0];
+    return siloGrains.find(g => String(g.id) === String(selectedSiloGrainId)) || siloGrains[0];
+  }, [siloGrains, selectedSiloGrainId]);
 
   // Available stock for selected delivery grain
   const availableForSelectedGrain = useMemo(() => {
@@ -420,6 +462,20 @@ export default function CommissiondarStock() {
         </div>
       )}
 
+      {/* 2D Animated Yard Storage Silo */}
+      <GrainSiloContainer
+        title="Commissiondar Yard Storage Silo"
+        grainName={activeSiloGrain.name}
+        currentStock={activeSiloGrain.available}
+        unit={activeSiloGrain.unit || 'quintal'}
+        totalReceived={activeSiloGrain.received || totalReceived}
+        totalDelivered={activeSiloGrain.dispatched || totalDelivered}
+        subtext="Live physical inventory in yard awaiting rice mill dispatch"
+        availableGrains={siloGrains.length > 1 ? siloGrains : []}
+        selectedGrainId={selectedSiloGrainId}
+        onSelectGrain={setSelectedSiloGrainId}
+      />
+
       {/* Top 4 Stock Metrics */}
       <div
         style={{
@@ -494,7 +550,7 @@ export default function CommissiondarStock() {
           className={`btn ${activeTab === 'overview' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setActiveTab('overview')}
         >
-          📊 Stock Overview & Breakdown
+          <TrendingUpIcon size={16} /> Stock Overview & Breakdown
         </button>
 
         <button
@@ -502,7 +558,7 @@ export default function CommissiondarStock() {
           className={`btn ${activeTab === 'receive' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setActiveTab('receive')}
         >
-          ↓ Receive Stock from Farmer
+          <InwardArrowIcon size={16} /> Receive Stock from Farmer
         </button>
 
         <button
@@ -510,7 +566,7 @@ export default function CommissiondarStock() {
           className={`btn ${activeTab === 'deliver' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setActiveTab('deliver')}
         >
-          ↑ Deliver Stock to Mill
+          <OutwardArrowIcon size={16} /> Deliver Stock to Mill
         </button>
 
         <button
@@ -518,7 +574,7 @@ export default function CommissiondarStock() {
           className={`btn ${activeTab === 'history' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setActiveTab('history')}
         >
-          📋 Movement History ({history.length})
+          <ClipboardLedgerIcon size={16} /> Movement History ({history.length})
         </button>
       </div>
 
@@ -681,7 +737,7 @@ export default function CommissiondarStock() {
                 disabled={busy || !receiveFarmerId || !receiveQuantity}
                 style={{ minHeight: 44, padding: '0 26px' }}
               >
-                {busy ? 'Recording Intake...' : '↓ Confirm Stock Receive'}
+                {busy ? 'Recording Intake...' : 'Confirm Stock Receive'}
               </button>
             </div>
           </form>
@@ -797,9 +853,9 @@ export default function CommissiondarStock() {
                   required
                   disabled={busy}
                 />
-                {Number(deliverQuantity) > availableForSelectedGrain && (
+                {Number(deliverQuantity) > availableForSelectedGrain && availableForSelectedGrain > 0 && (
                   <p style={{ color: '#ef4444', fontSize: '0.78rem', margin: '4px 0 0' }}>
-                    ⚠ Quantity exceeds available stock!
+                    ⚠ Quantity exceeds available stock ({quantity(availableForSelectedGrain)} Qtl)!
                   </p>
                 )}
               </div>
@@ -830,11 +886,11 @@ export default function CommissiondarStock() {
                   !deliverFarmerId ||
                   !(deliverMillName === '__custom__' ? customMillName.trim() : deliverMillName.trim()) ||
                   !deliverQuantity ||
-                  Number(deliverQuantity) > availableForSelectedGrain
+                  (availableForSelectedGrain > 0 && Number(deliverQuantity) > availableForSelectedGrain)
                 }
                 style={{ minHeight: 44, padding: '0 26px' }}
               >
-                {busy ? 'Recording Delivery...' : '↑ Confirm Stock Delivery'}
+                {busy ? 'Recording Delivery...' : 'Confirm Stock Delivery'}
               </button>
             </div>
           </form>

@@ -1,5 +1,6 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -9,10 +10,17 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
-import { getDashboard, describeError } from '../api';
+import { getDashboard, getMillerInventory, describeError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { t } from '../strings';
+import GrainSiloContainer from '../components/GrainSiloContainer';
+import {
+  SiloStorageIcon,
+  RupeeCoinIcon,
+  InwardArrowIcon,
+  FarmerAvatarIcon,
+} from '../components/AgriIcons';
 
 const rupees = value =>
   '₹' + Number(value || 0).toLocaleString('en-IN');
@@ -61,6 +69,8 @@ export default function Dashboard() {
   const { farmers, transactions } = useData();
 
   const [data, setData] = useState(null);
+  const [inventory, setInventory] = useState([]);
+  const [selectedGrainId, setSelectedGrainId] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -72,8 +82,25 @@ export default function Dashboard() {
       setError('');
 
       try {
-        const result = await getDashboard(token);
-        if (active) setData(result);
+        const [dashRes, invRes] = await Promise.allSettled([
+          getDashboard(token),
+          getMillerInventory(token),
+        ]);
+
+        if (dashRes.status === 'fulfilled' && dashRes.value && active) {
+          setData(dashRes.value);
+        } else if (dashRes.status === 'rejected' && active) {
+          setError(describeError(dashRes.reason));
+        }
+
+        if (invRes.status === 'fulfilled' && invRes.value && active) {
+          const rawInv = Array.isArray(invRes.value)
+            ? invRes.value
+            : Array.isArray(invRes.value?.inventory)
+            ? invRes.value.inventory
+            : [];
+          setInventory(rawInv);
+        }
       } catch (err) {
         if (active) setError(describeError(err));
       } finally {
@@ -210,37 +237,101 @@ export default function Dashboard() {
     farmers.find(f => Number(f.id) === Number(farmerId))?.name
     || 'Farmer';
 
+  // Build silo grains list for the interactive 2D silo
+  const siloGrains = useMemo(() => {
+    const list = [{
+      id: 'all',
+      name: 'All Paddy Grains',
+      available: Number(totalStock || 0),
+      stock: Number(totalStock || 0),
+      unit: 'quintal',
+      received: Number(totalStock || 0),
+      dispatched: 0,
+    }];
+
+    inventory.forEach(item => {
+      const gId = item.id || item.item_id || item.grain_id;
+      if (gId) {
+        list.push({
+          id: String(gId),
+          name: item.name || `Grain #${gId}`,
+          available: Number(item.available_stock ?? item.stock ?? 0),
+          stock: Number(item.available_stock ?? item.stock ?? 0),
+          unit: item.unit || 'quintal',
+          received: Number(item.total_received ?? item.received ?? (item.available_stock || 0)),
+          dispatched: Number(item.total_dispatched ?? item.dispatched ?? 0),
+        });
+      }
+    });
+
+    return list;
+  }, [totalStock, inventory]);
+
+  const activeSiloGrain = useMemo(() => {
+    if (selectedGrainId === 'all') {
+      return siloGrains[0];
+    }
+    return siloGrains.find(g => String(g.id) === String(selectedGrainId)) || siloGrains[0];
+  }, [siloGrains, selectedGrainId]);
+
   return (
     <main className="page dashboard-page">
-      <header className="dashboard-header">
+      <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <p className="dashboard-eyebrow">
             GRAINLEDGER / OVERVIEW
           </p>
-          <h1>{t.dashboard}</h1>
+          <h1 style={{ margin: '4px 0 6px' }}>{t.dashboard}</h1>
           <p className="dashboard-subtitle">
             Monitor paddy intake, stock, and outstanding farmer balances.
           </p>
         </div>
 
-        <div className="dashboard-date">
-          <span className="date-dot" />
-          <span>
-            {new Date().toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            })}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Link to="/intake" className="btn btn-primary" style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.84rem' }}>
+            ↓ Record Intake
+          </Link>
+          <Link to="/payments" className="btn btn-secondary" style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.84rem' }}>
+            ₹ Record Payment
+          </Link>
+          <Link to="/inventory" className="btn btn-secondary" style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.84rem' }}>
+            ▤ Inventory Ledger
+          </Link>
+          <div className="dashboard-date">
+            <span className="date-dot" />
+            <span>
+              {new Date().toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              })}
+            </span>
+          </div>
         </div>
       </header>
+
+      {/* 2D Animated Grain Storage Silo Visualizer */}
+      <GrainSiloContainer
+        title="Mill Paddy Silo & Stock Reserves"
+        grainName={activeSiloGrain.name}
+        currentStock={activeSiloGrain.available}
+        unit={activeSiloGrain.unit || 'quintal'}
+        totalReceived={activeSiloGrain.received || totalStock}
+        totalDelivered={activeSiloGrain.dispatched || 0}
+        subtext="Live physical inventory on hand inside the mill"
+        availableGrains={siloGrains.length > 1 ? siloGrains : []}
+        selectedGrainId={selectedGrainId}
+        onSelectGrain={setSelectedGrainId}
+      />
 
       {/* Summary cards */}
       <section className="dashboard-stats" aria-label="Mill summary">
 
         <article className="panel dashboard-stat-card">
           <div className="dashboard-stat-top">
-            <span className="dashboard-stat-icon stock-icon">▤</span>
+            <span className="dashboard-stat-icon stock-icon">
+              <SiloStorageIcon size={24} color="var(--green-glow)" />
+            </span>
             <span className="dashboard-stat-caption">Inventory</span>
           </div>
           <p className="stat-label">{t.totalStock}</p>
@@ -252,7 +343,9 @@ export default function Dashboard() {
 
         <article className="panel dashboard-stat-card">
           <div className="dashboard-stat-top">
-            <span className="dashboard-stat-icon owed-icon">₹</span>
+            <span className="dashboard-stat-icon owed-icon">
+              <RupeeCoinIcon size={24} color="var(--gold)" />
+            </span>
             <span className="dashboard-stat-caption">Accounts</span>
           </div>
           <p className="stat-label">{t.totalOwed}</p>
@@ -266,7 +359,9 @@ export default function Dashboard() {
 
         <article className="panel dashboard-stat-card">
           <div className="dashboard-stat-top">
-            <span className="dashboard-stat-icon intake-icon">↗</span>
+            <span className="dashboard-stat-icon intake-icon">
+              <InwardArrowIcon size={24} color="var(--cyan)" />
+            </span>
             <span className="dashboard-stat-caption">Today</span>
           </div>
           <p className="stat-label">{t.todayIntake}</p>
@@ -280,7 +375,9 @@ export default function Dashboard() {
 
         <article className="panel dashboard-stat-card">
           <div className="dashboard-stat-top">
-            <span className="dashboard-stat-icon stock-icon">♙</span>
+            <span className="dashboard-stat-icon stock-icon">
+              <FarmerAvatarIcon size={24} color="var(--green-glow)" />
+            </span>
             <span className="dashboard-stat-caption">Farmers</span>
           </div>
           <p className="stat-label">Total Farmers</p>

@@ -4,6 +4,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { t } from '../strings';
+import {
+  GrainStalkIcon,
+  SiloStorageIcon,
+  SettlementScaleIcon,
+  TenantShieldIcon,
+  MobilePhoneIcon,
+} from '../components/AgriIcons';
 
 const MSG91_WIDGET_ID = '366b67694f63393139353833';
 const MSG91_TOKEN_AUTH = '588079TBaMoxkCvOE6aeef278P1';
@@ -356,258 +363,340 @@ export default function Login() {
   };
 
   return (
-    <div className="login-wrap">
-      <motion.div
-        className="lcard"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
-        <h1 className="sr-only">{t.loginTitle}</h1>
-
-        <div className="lcard-banner">
-          <div className="lcard-brand">{t.loginTitle}</div>
-          <div className="lcard-logo">
-            <GrainIcon />
+    <div className="split-auth-wrap">
+      {/* Left side: Branding and agricultural visual */}
+      <div className="split-auth-brand">
+        <div className="split-brand-header">
+          <div className="split-brand-logo">
+            <GrainStalkIcon size={26} color="#f59e0b" />
+          </div>
+          <div>
+            <div className="split-brand-title">GRAIN LEDGER</div>
+            <div className="split-brand-subtitle">Smart Agricultural ERP</div>
           </div>
         </div>
 
-        {!otpStage && loginType !== 'admin' && (
-          <div className="ltabs" role="tablist" aria-label="Choose login type">
-            <button
-              type="button"
-              role="tab"
-              id="tab-owner"
-              className="ltab"
-              aria-selected={loginType === 'owner'}
-              onClick={() => switchType('owner')}
-            >
-              <MillerIcon />
-              Miller Login
-            </button>
-
-            <button
-              type="button"
-              role="tab"
-              id="tab-party"
-              className="ltab"
-              aria-selected={loginType === 'party'}
-              onClick={() => switchType('party')}
-            >
-              <CommissiondarIcon />
-              Commissiondhar Login
-            </button>
+        <div className="split-brand-hero">
+          <div className="split-brand-tagline-badge">
+            <span className="dot" />
+            Smart Grain. Smarter Management.
           </div>
-        )}
+          <h1 className="split-brand-h1">
+            Transforming Grain Operations with <span>Real-time Precision.</span>
+          </h1>
+          <p className="split-brand-desc">
+            The unified commodity ledger for rice mill owners and commission agents. Track paddy intakes, live yard storage, mill dispatches, and financial settlements seamlessly.
+          </p>
 
-        {!otpStage && loginType === 'admin' && (
-          <div style={{ textAlign: 'center', padding: '12px 16px 0' }}>
-            <h3 id="tab-admin">Grain Ledger Admin Login</h3>
-            <p>Authorized administrators only</p>
-          </div>
-        )}
-
-        {sessionExpired && (
-          <div className="lnotice" role="alert">
-            {t.sessionExpired}
-          </div>
-        )}
-
-        {!otpStage ? (
-          <form
-            className="lbody"
-            role="tabpanel"
-            aria-labelledby={
-              loginType === 'admin' ? 'tab-admin' : `tab-${loginType}`
-            }
-            onSubmit={handleSubmit}
-            noValidate
-          >
-            <div>
-              <div className={`lfield ${errors.phone ? 'invalid' : ''}`}>
-                <label htmlFor="phone">{t.phoneLabel}</label>
-                <input
-                  id="phone"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel-national"
-                  maxLength={10}
-                  placeholder={t.phonePlaceholder}
-                  value={phone}
-                  onChange={e => {
-                    setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
-                    setErrors(prev => ({
-                      ...prev,
-                      phone: undefined,
-                      form: undefined,
-                    }));
-                  }}
-                />
-                <span className="ficon"><PhoneIcon /></span>
+          <div className="split-brand-features">
+            <div className="split-feature-item">
+              <div className="split-feature-icon-badge">
+                <SiloStorageIcon size={19} color="#34d399" />
               </div>
-
-              {errors.phone && <div className="lerror">{errors.phone}</div>}
+              <div className="split-feature-text">
+                <strong>Live Inventory Silo</strong>
+                <span>Real-time visual stock tracking per crop variety.</span>
+              </div>
             </div>
 
-            <div>
-              <div className={`lfield ${errors.password ? 'invalid' : ''}`} style={{ position: 'relative' }}>
-                <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={e => {
-                    setPassword(e.target.value);
-                    setErrors(prev => ({
-                      ...prev,
-                      password: undefined,
-                      form: undefined,
-                    }));
-                  }}
-                  style={{ paddingRight: 40 }}
-                />
+            <div className="split-feature-item">
+              <div className="split-feature-icon-badge" style={{ background: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.25)', color: '#f59e0b' }}>
+                <SettlementScaleIcon size={19} color="#f59e0b" />
+              </div>
+              <div className="split-feature-text">
+                <strong>Settlement Engine</strong>
+                <span>Instant net payables & loan balance resolution.</span>
+              </div>
+            </div>
+
+            <div className="split-feature-item">
+              <div className="split-feature-icon-badge">
+                <TenantShieldIcon size={19} color="#34d399" />
+              </div>
+              <div className="split-feature-text">
+                <strong>Tenant Separation</strong>
+                <span>Independent Miller and Commissiondar records.</span>
+              </div>
+            </div>
+
+            <div className="split-feature-item">
+              <div className="split-feature-icon-badge" style={{ background: 'rgba(56, 189, 248, 0.12)', borderColor: 'rgba(56, 189, 248, 0.25)', color: '#38bdf8' }}>
+                <MobilePhoneIcon size={19} color="#38bdf8" />
+              </div>
+              <div className="split-feature-text">
+                <strong>Mobile-First Design</strong>
+                <span>Access your yard ledger anywhere, on any device.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="split-brand-footer">
+          <span>© {new Date().getFullYear()} Grain Ledger Systems</span>
+          <span>Verified Enterprise Security • MSG91 OTP Protected</span>
+        </div>
+      </div>
+
+      {/* Right side: Authentication Form Card */}
+      <div className="split-auth-form-side">
+        <motion.div
+          className="split-form-card"
+          initial={reduce ? false : { opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+        >
+          <div style={{ marginBottom: 20, textAlign: 'left' }}>
+            <h2 style={{ margin: '0 0 4px', fontSize: '1.45rem', fontWeight: 800 }}>
+              {loginType === 'admin' ? 'Administrator Login' : loginType === 'owner' ? 'Miller Sign In' : 'Commissiondar Sign In'}
+            </h2>
+            <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.86rem' }}>
+              Sign in with your registered mobile number and password.
+            </p>
+          </div>
+
+          {!otpStage && loginType !== 'admin' && (
+            <div className="ltabs" role="tablist" aria-label="Choose login type" style={{ marginBottom: 18, marginTop: 0, borderRadius: 14 }}>
+              <button
+                type="button"
+                role="tab"
+                id="tab-owner"
+                className="ltab"
+                aria-selected={loginType === 'owner'}
+                onClick={() => switchType('owner')}
+              >
+                <MillerIcon />
+                Miller
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                id="tab-party"
+                className="ltab"
+                aria-selected={loginType === 'party'}
+                onClick={() => switchType('party')}
+              >
+                <CommissiondarIcon />
+                Commissiondar
+              </button>
+            </div>
+          )}
+
+          {!otpStage && loginType === 'admin' && (
+            <div style={{ textAlign: 'center', padding: '8px 16px 16px' }}>
+              <p style={{ margin: 0, color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 650 }}>
+                🔒 Authorized Grain Ledger System Administrators Only
+              </p>
+            </div>
+          )}
+
+          {sessionExpired && (
+            <div className="lnotice" role="alert" style={{ marginBottom: 16 }}>
+              {t.sessionExpired}
+            </div>
+          )}
+
+          {!otpStage ? (
+            <form
+              className="lbody"
+              style={{ padding: 0 }}
+              role="tabpanel"
+              aria-labelledby={
+                loginType === 'admin' ? 'tab-admin' : `tab-${loginType}`
+              }
+              onSubmit={handleSubmit}
+              noValidate
+            >
+              <div>
+                <div className={`lfield ${errors.phone ? 'invalid' : ''}`}>
+                  <label htmlFor="phone">{t.phoneLabel}</label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={10}
+                    placeholder={t.phonePlaceholder}
+                    value={phone}
+                    onChange={e => {
+                      setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                      setErrors(prev => ({
+                        ...prev,
+                        phone: undefined,
+                        form: undefined,
+                      }));
+                    }}
+                  />
+                  <span className="ficon"><PhoneIcon /></span>
+                </div>
+
+                {errors.phone && <div className="lerror">{errors.phone}</div>}
+              </div>
+
+              <div>
+                <div className={`lfield ${errors.password ? 'invalid' : ''}`} style={{ position: 'relative' }}>
+                  <label htmlFor="password">Password</label>
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="Enter password"
+                    value={password}
+                    onChange={e => {
+                      setPassword(e.target.value);
+                      setErrors(prev => ({
+                        ...prev,
+                        password: undefined,
+                        form: undefined,
+                      }));
+                    }}
+                    style={{ paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(prev => !prev)}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="password-toggle-btn"
+                  >
+                    {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                  </button>
+                </div>
+
+                {errors.password && <div className="lerror">{errors.password}</div>}
+              </div>
+
+              {errors.form && (
+                <div className="lerror lerror-form" role="alert">
+                  {errors.form}
+                </div>
+              )}
+
+              <button type="submit" className="lbtn" disabled={loading} style={{ marginTop: 4 }}>
+                <ArrowIcon />
+                {loading ? 'Verifying...' : 'Continue'}
+              </button>
+            </form>
+          ) : (
+            <div className="lbody" style={{ padding: 0 }}>
+              <h3 style={{ margin: '0 0 6px' }}>MSG91 OTP Verification</h3>
+
+              <p style={{ color: 'var(--muted)', fontSize: '0.88rem', margin: 0 }}>
+                Complete the OTP verification in the MSG91 widget.
+              </p>
+
+              {msg91Status === 'opening' && (
+                <p role="status" style={{ color: 'var(--gold)', fontSize: '0.9rem' }}>
+                  ⏳ Opening MSG91 verification widget...
+                </p>
+              )}
+
+              {msg91Status === 'verifying' && (
+                <div className="lnotice" role="status">
+                  ✓ OTP verified. Connecting securely to Grain Ledger...
+                </div>
+              )}
+
+              {msg91Status === 'success' && (
+                <div className="lnotice" role="status">
+                  ✓ Login successful. Opening your dashboard...
+                </div>
+              )}
+
+              {msg91Status === 'failed' && (
+                <div className="lerror lerror-form" role="alert">
+                  {errors.form || 'Verification could not be completed.'}
+                </div>
+              )}
+
+              {errors.form && msg91Status !== 'failed' && (
+                <div className="lerror lerror-form" role="alert">
+                  {errors.form}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleBack}
+                disabled={loading || verifying}
+                style={{ marginTop: 12 }}
+              >
+                ← Back to Login
+              </button>
+            </div>
+          )}
+
+          {!otpStage && loginType !== 'admin' && (
+            <div style={{
+              textAlign: 'center',
+              marginTop: '18px',
+              fontSize: '15px',
+              padding: '6px 0',
+              lineHeight: '1.5',
+              color: 'var(--ink-soft)',
+              borderTop: '1px solid rgba(52, 211, 153, 0.15)',
+              paddingTop: '16px',
+            }}>
+              New to Grain Ledger?{' '}
+              <Link
+                to="/register"
+                style={{
+                  color: 'var(--green-glow)',
+                  fontWeight: 650,
+                  textDecoration: 'none',
+                }}
+              >
+                Create an account →
+              </Link>
+            </div>
+          )}
+
+          {!otpStage && (
+            <div style={{
+              textAlign: 'center',
+              paddingTop: '10px',
+            }}>
+              {loginType === 'admin' ? (
                 <button
                   type="button"
-                  onClick={() => setShowPassword(prev => !prev)}
-                  title={showPassword ? 'Hide password' : 'Show password'}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="password-toggle-btn"
+                  onClick={() => switchType('owner')}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    color: 'var(--muted)',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                  }}
                 >
-                  {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                  ← Back to User Login
                 </button>
-              </div>
-
-              {errors.password && <div className="lerror">{errors.password}</div>}
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => switchType('admin')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    border: 'none',
+                    background: 'none',
+                    color: 'var(--gold)',
+                    fontWeight: 650,
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                  }}
+                >
+                  <AdminIcon />
+                  Admin Login
+                </button>
+              )}
             </div>
-
-            {errors.form && (
-              <div className="lerror lerror-form" role="alert">
-                {errors.form}
-              </div>
-            )}
-
-            <button type="submit" className="lbtn" disabled={loading}>
-              <ArrowIcon />
-              {loading ? 'Verifying...' : 'Continue'}
-            </button>
-          </form>
-        ) : (
-          <div className="lbody">
-            <h3>MSG91 OTP Verification</h3>
-
-            <p>
-              Complete the OTP verification in the MSG91 widget.
-            </p>
-
-            {msg91Status === 'opening' && (
-              <p role="status">Opening MSG91 verification...</p>
-            )}
-
-            {msg91Status === 'verifying' && (
-              <div className="lnotice" role="status">
-                OTP verified. Connecting securely to Grain Ledger...
-              </div>
-            )}
-
-            {msg91Status === 'success' && (
-              <div className="lnotice" role="status">
-                Login successful. Opening your dashboard...
-              </div>
-            )}
-
-            {msg91Status === 'failed' && (
-              <div className="lerror lerror-form" role="alert">
-                {errors.form || 'Verification could not be completed.'}
-              </div>
-            )}
-
-            {errors.form && msg91Status !== 'failed' && (
-              <div className="lerror lerror-form" role="alert">
-                {errors.form}
-              </div>
-            )}
-
-            <button
-              type="button"
-              className="ltab"
-              onClick={handleBack}
-              disabled={loading || verifying}
-            >
-              Back to Login
-            </button>
-          </div>
-        )}
-
-        {!otpStage && loginType !== 'admin' && (
-          <div style={{
-            textAlign: 'center',
-            marginTop: '1px',
-            fontSize: '16px',
-            padding: '0 16px 6px',
-            lineHeight: '1.5',
-            marginBottom: '10px',
-            color: 'var(--ink-soft)',
-          }}>
-            New to Grain Ledger?{' '}
-            <Link
-              to="/register"
-              style={{
-                color: 'var(--green-glow)',
-                fontWeight: 650,
-                textDecoration: 'none',
-              }}
-            >
-              Create an account
-            </Link>
-          </div>
-        )}
-
-        {!otpStage && (
-          <div style={{
-            textAlign: 'center',
-            padding: '0 16px 14px',
-          }}>
-            {loginType === 'admin' ? (
-              <button
-                type="button"
-                onClick={() => switchType('owner')}
-                style={{
-                  border: 'none',
-                  background: 'none',
-                  color: 'var(--muted)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-              >
-                ← Back to User Login
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => switchType('admin')}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  border: 'none',
-                  background: 'none',
-                  color: 'var(--gold)',
-                  fontWeight: 650,
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-              >
-                <AdminIcon />
-                Admin Login
-              </button>
-            )}
-          </div>
-        )}
-      </motion.div>
+          )}
+        </motion.div>
+      </div>
     </div>
   );
 }

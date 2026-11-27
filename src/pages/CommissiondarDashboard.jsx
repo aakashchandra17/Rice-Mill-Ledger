@@ -8,9 +8,19 @@ import {
   getCommissiondarMillFarmers,
   getCommissiondarMillCommissions,
   getCommissiondarCommissionReceipts,
+  getCommissiondarStock,
   describeError,
 } from '../api';
 import { useAuth } from '../context/AuthContext';
+import GrainSiloContainer from '../components/GrainSiloContainer';
+import {
+  FarmerAvatarIcon,
+  MillFactoryIcon,
+  TrendingUpIcon,
+  RupeeCoinIcon,
+  PendingClockIcon,
+  ClipboardLedgerIcon,
+} from '../components/AgriIcons';
 
 const rupees = value =>
   '₹' + Number(value || 0).toLocaleString('en-IN');
@@ -37,6 +47,8 @@ export default function CommissiondarDashboard() {
 
   // Primary backend dashboard response: { active_loans, total_lent_out, total_outstanding, commissions_pending }
   const [dashboardData, setDashboardData] = useState(null);
+  const [stockData, setStockData] = useState(null);
+  const [selectedGrainId, setSelectedGrainId] = useState('all');
 
   // Entities
   const [farmers, setFarmers] = useState([]);
@@ -72,12 +84,17 @@ export default function CommissiondarDashboard() {
         console.warn('Backend dashboard summary call:', dashErr);
       }
 
-      // 2. Fetch farmers, mills, and loans in parallel
-      const [farmersRes, millsRes, loansRes] = await Promise.allSettled([
+      // 2. Fetch farmers, mills, loans, and stock in parallel
+      const [farmersRes, millsRes, loansRes, stockRes] = await Promise.allSettled([
         getCommissiondarFarmers(token),
         getCommissiondarMills(token, true),
         getCommissiondarLoans(token),
+        getCommissiondarStock(token),
       ]);
+
+      if (stockRes.status === 'fulfilled' && stockRes.value) {
+        setStockData(stockRes.value);
+      }
 
       const farmersList =
         farmersRes.status === 'fulfilled' && farmersRes.value
@@ -180,7 +197,7 @@ export default function CommissiondarDashboard() {
       label: 'Network Farmers',
       value: number(farmers.length),
       subtext: 'Directly registered farmers',
-      icon: '👨‍🌾',
+      icon: <FarmerAvatarIcon size={22} color="var(--green-light)" />,
       tone: 'var(--green-light)',
       to: '/commissiondar/farmers',
     },
@@ -188,7 +205,7 @@ export default function CommissiondarDashboard() {
       label: 'Partner Rice Mills',
       value: number(mills.length),
       subtext: `${associatedFarmerCount} associated farmers`,
-      icon: '🏭',
+      icon: <MillFactoryIcon size={22} color="var(--cyan)" />,
       tone: 'var(--cyan)',
       to: '/commissiondar/mills',
     },
@@ -196,7 +213,7 @@ export default function CommissiondarDashboard() {
       label: 'Commission Earned',
       value: rupees(commissionsEarned),
       subtext: 'Total earned from mills',
-      icon: '📈',
+      icon: <TrendingUpIcon size={22} color="var(--gold)" />,
       tone: 'var(--gold)',
       to: '/commissiondar/ledger',
     },
@@ -204,7 +221,7 @@ export default function CommissiondarDashboard() {
       label: 'Commission Received',
       value: rupees(commissionsReceived),
       subtext: 'Payments collected',
-      icon: '💰',
+      icon: <RupeeCoinIcon size={22} color="var(--green-light)" />,
       tone: 'var(--green-light)',
       to: '/commissiondar/ledger',
     },
@@ -212,7 +229,7 @@ export default function CommissiondarDashboard() {
       label: 'Pending Commission',
       value: rupees(commissionsPending || dashboardData?.commissions_pending),
       subtext: 'Due from partner mills',
-      icon: '⏳',
+      icon: <PendingClockIcon size={22} color="var(--danger)" />,
       tone: (commissionsPending || dashboardData?.commissions_pending) > 0 ? '#ef4444' : 'var(--green-light)',
       to: '/commissiondar/ledger',
     },
@@ -220,11 +237,89 @@ export default function CommissiondarDashboard() {
       label: 'Active Farmer Loans',
       value: number(dashboardData?.active_loans ?? recentLoans.length),
       subtext: `Outstanding: ${rupees(dashboardData?.total_outstanding)}`,
-      icon: '📋',
+      icon: <ClipboardLedgerIcon size={22} color="#f59e0b" />,
       tone: '#f59e0b',
       to: '/commissiondar/loans',
     },
   ];
+
+  // Yard stock metrics and per-grain breakdown for 2D Silo
+  const yardMetrics = useMemo(() => {
+    const rawHistory = Array.isArray(stockData?.history) ? stockData.history : [];
+    const totalRec = Number(stockData?.total_received ?? stockData?.received ?? 0);
+    const totalDel = Number(stockData?.total_delivered ?? stockData?.delivered ?? 0);
+    const currentStock = Number(
+      stockData?.current_stock ?? stockData?.currentStock ?? Math.max(0, totalRec - totalDel)
+    );
+
+    const grainMap = {};
+    rawHistory.forEach(m => {
+      const gId = m.grain_type_id || m.grainTypeId || m.item_id;
+      if (!gId) return;
+      const mType = String(m.movement_type || m.type || '').toLowerCase();
+      const isReceive =
+        mType === 'receive' ||
+        mType === 'received_from_farmer' ||
+        mType.includes('receive') ||
+        mType.includes('inward');
+      const isDeliver =
+        mType === 'deliver' ||
+        mType === 'delivered_to_mill' ||
+        mType.includes('deliver') ||
+        mType.includes('dispatch') ||
+        mType.includes('outward');
+      const qty = Math.abs(Number(m.quantity || 0));
+
+      if (!grainMap[gId]) {
+        grainMap[gId] = {
+          id: String(gId),
+          name: m.grain_name || m.grainName || `Grain #${gId}`,
+          available: 0,
+          received: 0,
+          delivered: 0,
+          unit: m.unit || 'quintal',
+        };
+      }
+
+      if (isReceive) grainMap[gId].received += qty;
+      else if (isDeliver) grainMap[gId].delivered += qty;
+      grainMap[gId].available = Math.max(0, grainMap[gId].received - grainMap[gId].delivered);
+    });
+
+    const grains = [{
+      id: 'all',
+      name: 'All Yard Crops',
+      available: currentStock,
+      stock: currentStock,
+      unit: 'quintal',
+      received: totalRec,
+      dispatched: totalDel,
+    }];
+
+    Object.values(grainMap).forEach(g => {
+      grains.push({
+        id: g.id,
+        name: g.name,
+        available: g.available,
+        stock: g.available,
+        unit: g.unit,
+        received: g.received,
+        dispatched: g.delivered,
+      });
+    });
+
+    return {
+      currentStock,
+      totalRec,
+      totalDel,
+      grains,
+    };
+  }, [stockData]);
+
+  const activeSiloGrain = useMemo(() => {
+    if (selectedGrainId === 'all') return yardMetrics.grains[0];
+    return yardMetrics.grains.find(g => String(g.id) === String(selectedGrainId)) || yardMetrics.grains[0];
+  }, [yardMetrics, selectedGrainId]);
 
   return (
     <div className="commissiondar-dashboard-page" style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -246,14 +341,25 @@ export default function CommissiondarDashboard() {
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={loadDashboard}
-          disabled={loading}
-        >
-          {loading ? 'Refreshing...' : '↻ Refresh Dashboard'}
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Link to="/commissiondar/stock" className="btn btn-primary" style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.84rem' }}>
+            ↓ Receive / Deliver Stock
+          </Link>
+          <Link to="/commissiondar/loans" className="btn btn-secondary" style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.84rem' }}>
+            + Record Loan
+          </Link>
+          <Link to="/commissiondar/farmers" className="btn btn-secondary" style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.84rem' }}>
+            + Network Farmers
+          </Link>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={loadDashboard}
+            disabled={loading}
+          >
+            {loading ? 'Refreshing...' : '↻ Refresh'}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -268,6 +374,20 @@ export default function CommissiondarDashboard() {
         </div>
       ) : (
         <>
+          {/* 2D Animated Yard Storage Silo */}
+          <GrainSiloContainer
+            title="Commissiondar Yard Storage Silo"
+            grainName={activeSiloGrain.name}
+            currentStock={activeSiloGrain.available}
+            unit={activeSiloGrain.unit || 'quintal'}
+            totalReceived={activeSiloGrain.received || yardMetrics.totalRec}
+            totalDelivered={activeSiloGrain.dispatched || yardMetrics.totalDel}
+            subtext="Live physical inventory received from farmers awaiting mill dispatch"
+            availableGrains={yardMetrics.grains.length > 1 ? yardMetrics.grains : []}
+            selectedGrainId={selectedGrainId}
+            onSelectGrain={setSelectedGrainId}
+          />
+
           {/* Top 6 KPI Metric Cards */}
           <div
             style={{
