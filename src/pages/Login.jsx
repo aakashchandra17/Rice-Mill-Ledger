@@ -139,8 +139,8 @@ const AdminIcon = () => (
   </Icon>
 );
 
-const PhoneIcon = () => (
-  <Icon>
+const PhoneIcon = ({ size = 20 }) => (
+  <Icon size={size}>
     <rect x="7" y="2" width="10" height="20" rx="2.5" />
     <path d="M11 18h2" />
   </Icon>
@@ -527,14 +527,14 @@ export default function Login() {
                       }));
                     }}
                   />
-                  <span className="ficon"><PhoneIcon /></span>
+                  <span className="ficon"><PhoneIcon size={20} /></span>
                 </div>
 
                 {errors.phone && <div className="lerror">{errors.phone}</div>}
               </div>
 
               <div>
-                <div className={`lfield ${errors.password ? 'invalid' : ''}`} style={{ position: 'relative' }}>
+                <div className={`lfield ${errors.password ? 'invalid' : ''}`}>
                   <label htmlFor="password">Password</label>
                   <input
                     id="password"
@@ -550,7 +550,6 @@ export default function Login() {
                         form: undefined,
                       }));
                     }}
-                    style={{ paddingRight: 40 }}
                   />
                   <button
                     type="button"
@@ -559,7 +558,7 @@ export default function Login() {
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     className="password-toggle-btn"
                   >
-                    {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                    {showPassword ? <EyeOffIcon size={20} /> : <EyeIcon size={20} />}
                   </button>
                 </div>
 
