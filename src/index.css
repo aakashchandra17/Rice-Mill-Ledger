@@ -1809,58 +1809,115 @@ p {
   padding: 28px 32px 24px;
 }
 
-.lfield {
+.lfield,
+.split-form-card .lfield {
   position: relative;
-  padding: 10px 54px 10px 16px;
-  border: 1.5px solid rgba(52, 211, 153, 0.2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 62px;
+  padding: 10px 48px 10px 16px;
+  border: 1.5px solid rgba(52, 211, 153, 0.22);
   border-radius: 14px;
-  background: var(--lc-field);
-  transition: border-color .2s, box-shadow .2s, background .2s;
+  background: rgba(10, 24, 17, 0.85);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
+  cursor: text;
 }
 
-.lfield:focus-within {
-  border-color: var(--green-glow);
-  background: rgba(17, 36, 26, 0.95);
-  box-shadow: 0 0 0 3px rgba(0, 240, 152, 0.22), 0 0 16px rgba(0, 240, 152, 0.15);
+.lfield:hover,
+.split-form-card .lfield:hover {
+  border-color: rgba(52, 211, 153, 0.38);
+  background: rgba(13, 30, 21, 0.9);
 }
 
-.lfield.invalid {
-  border-color: var(--danger);
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2);
+.lfield:focus-within,
+.split-form-card .lfield:focus-within {
+  border-color: var(--green);
+  background: rgba(14, 32, 23, 0.98);
+  box-shadow: 0 0 0 3px rgba(0, 201, 120, 0.2), 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
-.lfield label {
+.lfield.invalid,
+.split-form-card .lfield.invalid {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.22) !important;
+}
+
+.lfield label,
+.split-form-card .lfield label {
   display: block;
-  color: #9cb3a5;
-  font-size: .78rem;
-  font-weight: 600;
+  color: #8da696;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: 0.05em;
+  margin: 0 0 3px 0;
+  line-height: 1.2;
+  transition: color var(--motion-fast);
+  user-select: none;
+  pointer-events: none;
 }
 
-.lfield input {
-  width: 100%;
-  padding: 4px 0;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  background: transparent;
-  color: #ffffff;
-  font-size: 1.1rem;
-  font-weight: 600;
+.lfield:focus-within label,
+.split-form-card .lfield:focus-within label {
+  color: var(--green-light);
 }
 
-.lfield input::placeholder {
-  color: #557060;
+.lfield input,
+.split-form-card .lfield input,
+.split-form-card form .lfield input {
+  width: 100% !important;
+  min-height: 0 !important;
+  height: 26px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+  font-size: 1.05rem !important;
+  font-weight: 600 !important;
+  font-family: inherit !important;
+  line-height: 26px !important;
 }
 
-.ficon {
+.lfield input::placeholder,
+.split-form-card .lfield input::placeholder {
+  color: #526f5e !important;
+  font-size: 0.95rem !important;
+  font-weight: 450 !important;
+}
+
+.lfield input:-webkit-autofill,
+.lfield input:-webkit-autofill:hover,
+.lfield input:-webkit-autofill:focus,
+.split-form-card .lfield input:-webkit-autofill {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px transparent inset !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+.ficon,
+.lfield .ficon {
   position: absolute;
   top: 50%;
-  right: 16px;
-  display: flex;
+  right: 15px;
   transform: translateY(-50%);
-  color: var(--green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #34d399;
+  pointer-events: none;
+  opacity: 0.85;
+  transition: opacity var(--motion-fast), color var(--motion-fast);
+}
+
+.lfield:focus-within .ficon {
+  opacity: 1;
+  color: var(--green-glow);
 }
 
 .ficon-btn {
@@ -1874,9 +1931,9 @@ p {
   position: absolute;
   background: transparent;
   border: none;
-  color: var(--muted);
+  color: #8da696;
   cursor: pointer;
-  padding: 6px;
+  padding: 0;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -1891,17 +1948,32 @@ p {
 }
 
 .lfield .password-toggle-btn {
+  position: absolute;
+  top: 50%;
   right: 12px;
-  bottom: 8px;
+  bottom: auto;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+}
+
+.lfield .password-toggle-btn:hover {
+  color: var(--green-glow);
+  background: rgba(52, 211, 153, 0.14);
+  transform: translateY(-50%) scale(1.08);
 }
 
 .input-with-toggle .password-toggle-btn {
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
 }
 
 .input-with-toggle .password-toggle-btn:hover {
+  color: var(--green-glow);
+  background: rgba(52, 211, 153, 0.14);
   transform: translateY(-50%) scale(1.08);
 }
 
@@ -3446,6 +3518,53 @@ p {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   animation: glFadeUp 400ms ease-out both;
+}
+
+/* Neat, dark translucent inputs for registration and standalone auth forms */
+.split-form-card form input:not(.lfield input):not(.lfield *)[type="text"],
+.split-form-card form input:not(.lfield input):not(.lfield *)[type="tel"],
+.split-form-card form input:not(.lfield input):not(.lfield *)[type="password"],
+.split-form-card form input:not(.lfield input):not(.lfield *)[type="email"],
+.split-form-card form input:not(.lfield input):not(.lfield *)[type="number"],
+.split-form-card form input:not(.lfield input):not(.lfield *) {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  outline: none;
+  background: rgba(8, 20, 14, 0.85);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-family: inherit;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
+}
+
+.split-form-card form input:not(.lfield input):not(.lfield *):focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(0, 201, 120, 0.18);
+  background: rgba(12, 28, 20, 0.95);
+}
+
+.split-form-card form input:not(.lfield input):not(.lfield *)::placeholder {
+  color: #647d6e;
+}
+
+.split-form-card form input:not(.lfield input):not(.lfield *):-webkit-autofill,
+.split-form-card form input:not(.lfield input):not(.lfield *):-webkit-autofill:hover,
+.split-form-card form input:not(.lfield input):not(.lfield *):-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(8, 20, 14, 0.95) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.split-form-card form .btn-primary {
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 1024px) {

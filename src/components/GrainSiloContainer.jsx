@@ -91,182 +91,173 @@ export default function GrainSiloContainer({
 
       {/* Main Silo Visual & Stats Container */}
       <div className="silo-body-grid">
-        {/* Left: 2D Glass Silo Visualizer */}
+        {/* Left: Modern 2D Glass Silo Visualizer */}
         <div className="silo-visual-container">
           <svg className="silo-svg" viewBox="0 0 200 280" preserveAspectRatio="xMidYMid meet">
             <defs>
-              {/* Glass Silo Reflections */}
+              {/* Glass Silo Specular Sheen */}
               <linearGradient id="siloGlassGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="rgba(255,255,255,0.18)" />
-                <stop offset="15%" stopColor="rgba(255,255,255,0.05)" />
-                <stop offset="70%" stopColor="rgba(0,0,0,0.25)" />
-                <stop offset="90%" stopColor="rgba(255,255,255,0.15)" />
-                <stop offset="100%" stopColor="rgba(255,255,255,0.25)" />
+                <stop offset="0%" stopColor="rgba(255,255,255,0.14)" />
+                <stop offset="18%" stopColor="rgba(255,255,255,0.03)" />
+                <stop offset="75%" stopColor="rgba(0,0,0,0.18)" />
+                <stop offset="95%" stopColor="rgba(255,255,255,0.08)" />
+                <stop offset="100%" stopColor="rgba(255,255,255,0.18)" />
               </linearGradient>
 
-              {/* Metallic Dome and Steel Framing */}
-              <linearGradient id="siloDomeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#1e3a2b" />
-                <stop offset="30%" stopColor="#3d6b53" />
-                <stop offset="60%" stopColor="#244534" />
-                <stop offset="100%" stopColor="#13241b" />
+              {/* Brushed Metallic Silo Cap */}
+              <linearGradient id="siloCapGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#152b1e" />
+                <stop offset="25%" stopColor="#2c533e" />
+                <stop offset="65%" stopColor="#1d3b2a" />
+                <stop offset="100%" stopColor="#122319" />
               </linearGradient>
 
-              {/* Golden Grain Gradient */}
-              <linearGradient id="grainFillGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#fde68a" />
-                <stop offset="18%" stopColor="#f59e0b" />
-                <stop offset="60%" stopColor="#d97706" />
+              {/* Natural Harvest Amber Grain Gradient */}
+              <linearGradient id="neatGrainGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#fde047" />
+                <stop offset="14%" stopColor="#f59e0b" />
+                <stop offset="55%" stopColor="#d97706" />
                 <stop offset="100%" stopColor="#92400e" />
               </linearGradient>
 
-              {/* Grain Texture Pattern */}
-              <pattern id="grainDots" width="10" height="10" patternUnits="userSpaceOnUse">
-                <circle cx="2" cy="2" r="0.8" fill="rgba(255,255,255,0.3)" />
-                <circle cx="7" cy="6" r="0.8" fill="rgba(0,0,0,0.2)" />
-                <circle cx="3" cy="8" r="0.6" fill="rgba(255,255,255,0.2)" />
-              </pattern>
-
-              {/* Clip Path for Silo Cylindrical Interior */}
-              <clipPath id="siloInteriorClip">
-                <rect x="30" y="55" width="140" height="175" rx="6" ry="6" />
+              {/* Clip Path for Silo Cylindrical Chamber */}
+              <clipPath id="siloChamberClip">
+                <rect x="34" y="50" width="132" height="174" rx="8" ry="8" />
               </clipPath>
             </defs>
 
-            {/* Silo Support Legs & Base Funnel */}
-            <path d="M 45 230 L 30 268 L 38 268 L 52 230 Z" fill="#1b3628" />
-            <path d="M 155 230 L 170 268 L 162 268 L 148 230 Z" fill="#1b3628" />
-            <path d="M 60 230 L 80 255 L 120 255 L 140 230 Z" fill="#142b20" stroke="rgba(52,211,153,0.3)" strokeWidth="1.5" />
-            <rect x="75" y="255" width="50" height="14" rx="2" fill="#0d1e15" stroke="rgba(52,211,153,0.4)" strokeWidth="1" />
+            {/* Industrial Support Structure (Clean, Solid, Engineered) */}
+            {/* Structural base beam */}
+            <rect x="28" y="224" width="144" height="6" rx="3" fill="#162e21" stroke="rgba(52,211,153,0.3)" strokeWidth="1.2" />
 
-            {/* Silo Top Dome / Roof */}
+            {/* Dual heavy-duty vertical steel columns */}
+            <rect x="44" y="230" width="10" height="35" rx="2" fill="#10251a" stroke="rgba(52,211,153,0.25)" strokeWidth="1" />
+            <rect x="146" y="230" width="10" height="35" rx="2" fill="#10251a" stroke="rgba(52,211,153,0.25)" strokeWidth="1" />
+
+            {/* Ground footplates */}
+            <rect x="38" y="262" width="22" height="4" rx="2" fill="#0c1d14" stroke="rgba(52,211,153,0.35)" />
+            <rect x="140" y="262" width="22" height="4" rx="2" fill="#0c1d14" stroke="rgba(52,211,153,0.35)" />
+
+            {/* Central inverted conical discharge hopper */}
+            <path d="M 72 230 L 86 253 L 114 253 L 128 230 Z" fill="#0c1d14" stroke="rgba(52,211,153,0.3)" strokeWidth="1.2" />
+            <rect x="88" y="253" width="24" height="8" rx="2" fill="#193828" stroke="rgba(52,211,153,0.4)" strokeWidth="1" />
+
+            {/* Silo Top Aerodynamic Dome Cap */}
             <path
-              d="M 22 55 Q 100 12 178 55 Z"
-              fill="url(#siloDomeGrad)"
-              stroke="rgba(52,211,153,0.4)"
+              d="M 32 50 Q 100 28 168 50 Z"
+              fill="url(#siloCapGrad)"
+              stroke="rgba(52,211,153,0.35)"
+              strokeWidth="1.8"
+            />
+            {/* Sleek low-profile vent collar */}
+            <rect x="89" y="25" width="22" height="6" rx="3" fill="#1b3a2a" stroke="rgba(52,211,153,0.45)" strokeWidth="1" />
+
+            {/* Silo Transparent Glass Shell */}
+            <rect
+              x="32"
+              y="50"
+              width="136"
+              height="175"
+              rx="10"
+              ry="10"
+              fill="rgba(8, 22, 15, 0.65)"
+              stroke="rgba(52,211,153,0.28)"
               strokeWidth="2"
             />
-            {/* Aeration cap / Hatch */}
-            <ellipse cx="100" cy="18" rx="16" ry="7" fill="#2d5540" stroke="rgba(52,211,153,0.5)" strokeWidth="1.5" />
-            <line x1="100" y1="11" x2="100" y2="6" stroke="rgba(52,211,153,0.7)" strokeWidth="2" strokeLinecap="round" />
 
-            {/* Silo Transparent Body Shell */}
-            <rect
-              x="28"
-              y="55"
-              width="144"
-              height="176"
-              rx="8"
-              ry="8"
-              fill="rgba(8, 20, 14, 0.72)"
-              stroke="rgba(52,211,153,0.35)"
-              strokeWidth="2.5"
-            />
-
-            {/* Clipped Inside Area: Grain Fill + Waves */}
-            <g clipPath="url(#siloInteriorClip)">
-              {/* Back ambient tint */}
-              <rect x="30" y="55" width="140" height="175" fill="rgba(3, 8, 5, 0.45)" />
+            {/* Inside Clipped Chamber: Grain Mass + Liquid Wave */}
+            <g clipPath="url(#siloChamberClip)">
+              {/* Dark chamber interior */}
+              <rect x="34" y="50" width="132" height="174" fill="rgba(4, 12, 8, 0.55)" />
 
               {/* Dynamic Grain Fill with Height Transition */}
               {animatedHeight > 0 && (
                 <g
                   style={{
-                    transform: `translateY(${175 * (1 - animatedHeight / 100)}px)`,
-                    transition: 'transform 900ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    transform: `translateY(${174 * (1 - animatedHeight / 100)}px)`,
+                    transition: 'transform 850ms cubic-bezier(0.25, 1, 0.5, 1)',
                   }}
                 >
-                  {/* Grain Base Mass */}
-                  <rect
-                    x="30"
-                    y="60"
-                    width="140"
-                    height="180"
-                    fill="url(#grainFillGrad)"
+                  {/* Organic wave surface mass */}
+                  <path
+                    d="M 34 0 Q 67 -6, 100 0 T 166 0 L 166 185 L 34 185 Z"
+                    fill="url(#neatGrainGrad)"
                   />
 
-                  {/* Grain Pattern Overlay */}
-                  <rect
-                    x="30"
-                    y="60"
-                    width="140"
-                    height="180"
-                    fill="url(#grainDots)"
-                    opacity="0.65"
-                  />
-
-                  {/* Surface Wave Crest */}
+                  {/* Surface crest highlight */}
                   <path
-                    d="M 30 60 Q 65 52, 100 60 T 170 60 L 170 70 L 30 70 Z"
-                    fill="#fef08a"
-                    opacity="0.9"
+                    d="M 34 0 Q 67 -6, 100 0 T 166 0"
+                    fill="none"
+                    stroke="rgba(254, 240, 138, 0.9)"
+                    strokeWidth="2.5"
                   />
                   <path
-                    d="M 30 63 Q 65 57, 100 63 T 170 63 L 170 72 L 30 72 Z"
-                    fill="#f59e0b"
-                    opacity="0.5"
+                    d="M 34 2 Q 67 -4, 100 2 T 166 2"
+                    fill="none"
+                    stroke="rgba(245, 158, 11, 0.6)"
+                    strokeWidth="1.5"
                   />
                 </g>
               )}
 
-              {/* Empty state soft dust when 0 stock */}
+              {/* Empty state label when zero stock */}
               {animatedHeight === 0 && (
                 <text
                   x="100"
-                  y="145"
+                  y="140"
                   textAnchor="middle"
-                  fill="rgba(148,169,156,0.6)"
+                  fill="rgba(148,169,156,0.55)"
                   fontSize="12"
                   fontWeight="600"
-                  letterSpacing="0.5"
+                  letterSpacing="0.4"
                 >
                   Silo Empty
                 </text>
               )}
             </g>
 
-            {/* Measurement Graduated Ticks on Silo Wall */}
-            <g stroke="rgba(255,255,255,0.35)" strokeWidth="1.2">
-              {/* 100% Top Tick */}
-              <line x1="32" y1="65" x2="42" y2="65" />
-              <line x1="158" y1="65" x2="168" y2="65" />
-              {/* 75% Tick */}
-              <line x1="32" y1="105" x2="39" y2="105" />
-              <line x1="161" y1="105" x2="168" y2="105" />
-              {/* 50% Center Tick */}
-              <line x1="32" y1="145" x2="44" y2="145" stroke="rgba(52,211,153,0.7)" strokeWidth="1.8" />
-              <line x1="156" y1="145" x2="168" y2="145" stroke="rgba(52,211,153,0.7)" strokeWidth="1.8" />
-              {/* 25% Tick */}
-              <line x1="32" y1="185" x2="39" y2="185" />
-              <line x1="161" y1="185" x2="168" y2="185" />
-              {/* 0% Bottom Tick */}
-              <line x1="32" y1="225" x2="42" y2="225" />
-              <line x1="158" y1="225" x2="168" y2="225" />
+            {/* Precision Measurement Gauge Ticks (Clean & Minimalist along left wall) */}
+            <g stroke="rgba(255,255,255,0.25)" strokeWidth="1.2">
+              {/* 100% Mark */}
+              <line x1="36" y1="62" x2="46" y2="62" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4" />
+              {/* 75% Mark */}
+              <line x1="36" y1="102" x2="43" y2="102" />
+              {/* 50% Center Mark */}
+              <line x1="36" y1="142" x2="48" y2="142" stroke="rgba(52,211,153,0.7)" strokeWidth="1.8" />
+              {/* 25% Mark */}
+              <line x1="36" y1="182" x2="43" y2="182" />
+              {/* 0% Bottom Mark */}
+              <line x1="36" y1="218" x2="46" y2="218" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4" />
             </g>
 
-            {/* Vertical Glass Highlights */}
+            {/* Subtle Right Wall Level Indicator Notch */}
+            {animatedHeight > 0 && (
+              <g
+                style={{
+                  transform: `translateY(${174 * (1 - animatedHeight / 100)}px)`,
+                  transition: 'transform 850ms cubic-bezier(0.25, 1, 0.5, 1)',
+                }}
+              >
+                <polygon
+                  points="164,0 156,-4 156,4"
+                  fill="var(--gold)"
+                  stroke="rgba(254,240,138,0.8)"
+                  strokeWidth="0.8"
+                />
+              </g>
+            )}
+
+            {/* Vertical Glass Specular Highlight Sheen */}
             <rect
-              x="28"
-              y="55"
-              width="144"
-              height="176"
-              rx="8"
-              ry="8"
+              x="32"
+              y="50"
+              width="136"
+              height="175"
+              rx="10"
+              ry="10"
               fill="url(#siloGlassGrad)"
               pointerEvents="none"
             />
-
-            {/* Horizontal Steel Reinforcement Bands */}
-            <line x1="28" y1="95" x2="172" y2="95" stroke="rgba(52,211,153,0.25)" strokeWidth="1.5" />
-            <line x1="28" y1="135" x2="172" y2="135" stroke="rgba(52,211,153,0.25)" strokeWidth="1.5" />
-            <line x1="28" y1="175" x2="172" y2="175" stroke="rgba(52,211,153,0.25)" strokeWidth="1.5" />
-            <line x1="28" y1="215" x2="172" y2="215" stroke="rgba(52,211,153,0.25)" strokeWidth="1.5" />
-
-            {/* Visual Fill Percentage Tag */}
-            <rect x="80" y="215" width="40" height="15" rx="7" fill="rgba(6,14,10,0.85)" stroke="rgba(52,211,153,0.3)" />
-            <text x="100" y="226" textAnchor="middle" fill="var(--green-light)" fontSize="9.5" fontWeight="750">
-              {animatedHeight}%
-            </text>
           </svg>
         </div>
 

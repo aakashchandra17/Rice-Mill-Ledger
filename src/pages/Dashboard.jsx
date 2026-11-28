@@ -116,6 +116,84 @@ export default function Dashboard() {
     };
   }, [token]);
 
+  const totalStock = data?.total_stock ?? data?.totalStock ?? 0;
+  const totalOwed = data?.total_owed ?? data?.totalOwed ?? 0;
+  const todayIntake = data?.today_intake ?? data?.todayIntake ?? 0;
+  const rawIntake = data?.week_intake ?? data?.weekIntake ?? [];
+
+  const chartData = useMemo(() => {
+    if (!Array.isArray(rawIntake)) return [];
+    return rawIntake.map((item, index) => {
+      if (typeof item === 'number') {
+        const date = new Date();
+        date.setDate(date.getDate() - (rawIntake.length - 1 - index));
+        return {
+          day: date.toLocaleDateString('en-IN', { weekday: 'short' }),
+          intake: item,
+        };
+      }
+      return {
+        day: item.day ?? item.date ?? `Day ${index + 1}`,
+        intake: Number(item.intake ?? item.quantity ?? 0),
+      };
+    });
+  }, [rawIntake]);
+
+  const recentTransactions = useMemo(() => {
+    const list = Array.isArray(transactions) ? transactions : [];
+    return [...list].slice(-5).reverse();
+  }, [transactions]);
+
+  const recentIntakes = useMemo(
+    () => recentTransactions.filter(item => item.type === 'intake'),
+    [recentTransactions]
+  );
+
+  const recentPayments = useMemo(
+    () => recentTransactions.filter(item => item.type === 'payment'),
+    [recentTransactions]
+  );
+
+  // Build silo grains list for the interactive 2D silo
+  const siloGrains = useMemo(() => {
+    const list = [{
+      id: 'all',
+      name: 'All Paddy Grains',
+      available: Number(totalStock || 0),
+      stock: Number(totalStock || 0),
+      unit: 'quintal',
+      received: Number(totalStock || 0),
+      dispatched: 0,
+    }];
+
+    (inventory || []).forEach(item => {
+      const gId = item.id || item.item_id || item.grain_id;
+      if (gId) {
+        list.push({
+          id: String(gId),
+          name: item.name || `Grain #${gId}`,
+          available: Number(item.available_stock ?? item.stock ?? 0),
+          stock: Number(item.available_stock ?? item.stock ?? 0),
+          unit: item.unit || 'quintal',
+          received: Number(item.total_received ?? item.received ?? (item.available_stock || 0)),
+          dispatched: Number(item.total_dispatched ?? item.dispatched ?? 0),
+        });
+      }
+    });
+
+    return list;
+  }, [totalStock, inventory]);
+
+  const activeSiloGrain = useMemo(() => {
+    if (selectedGrainId === 'all') {
+      return siloGrains[0];
+    }
+    return siloGrains.find(g => String(g.id) === String(selectedGrainId)) || siloGrains[0];
+  }, [siloGrains, selectedGrainId]);
+
+  const getFarmerName = farmerId =>
+    (farmers || []).find(f => Number(f.id) === Number(farmerId))?.name || 'Farmer';
+
   if (loading) {
     return (
       <main className="page dashboard-page">
@@ -191,88 +269,6 @@ export default function Dashboard() {
       </main>
     );
   }
-
-  const totalStock = data.total_stock ?? data.totalStock ?? 0;
-  const totalOwed = data.total_owed ?? data.totalOwed ?? 0;
-  const todayIntake = data.today_intake ?? data.todayIntake ?? 0;
-
-  const rawIntake = data.week_intake ?? data.weekIntake ?? [];
-
-  const chartData = Array.isArray(rawIntake)
-    ? rawIntake.map((item, index) => {
-        if (typeof item === 'number') {
-          const date = new Date();
-          date.setDate(
-            date.getDate() - (rawIntake.length - 1 - index)
-          );
-
-          return {
-            day: date.toLocaleDateString('en-IN', {
-              weekday: 'short',
-            }),
-            intake: item,
-          };
-        }
-
-        return {
-          day: item.day ?? item.date ?? `Day ${index + 1}`,
-          intake: Number(item.intake ?? item.quantity ?? 0),
-        };
-      })
-    : [];
-
-  const recentTransactions = [...transactions]
-    .slice(-5)
-    .reverse();
-
-  const recentIntakes = recentTransactions.filter(
-    item => item.type === 'intake'
-  );
-
-  const recentPayments = recentTransactions.filter(
-    item => item.type === 'payment'
-  );
-
-  const getFarmerName = farmerId =>
-    farmers.find(f => Number(f.id) === Number(farmerId))?.name
-    || 'Farmer';
-
-  // Build silo grains list for the interactive 2D silo
-  const siloGrains = useMemo(() => {
-    const list = [{
-      id: 'all',
-      name: 'All Paddy Grains',
-      available: Number(totalStock || 0),
-      stock: Number(totalStock || 0),
-      unit: 'quintal',
-      received: Number(totalStock || 0),
-      dispatched: 0,
-    }];
-
-    inventory.forEach(item => {
-      const gId = item.id || item.item_id || item.grain_id;
-      if (gId) {
-        list.push({
-          id: String(gId),
-          name: item.name || `Grain #${gId}`,
-          available: Number(item.available_stock ?? item.stock ?? 0),
-          stock: Number(item.available_stock ?? item.stock ?? 0),
-          unit: item.unit || 'quintal',
-          received: Number(item.total_received ?? item.received ?? (item.available_stock || 0)),
-          dispatched: Number(item.total_dispatched ?? item.dispatched ?? 0),
-        });
-      }
-    });
-
-    return list;
-  }, [totalStock, inventory]);
-
-  const activeSiloGrain = useMemo(() => {
-    if (selectedGrainId === 'all') {
-      return siloGrains[0];
-    }
-    return siloGrains.find(g => String(g.id) === String(selectedGrainId)) || siloGrains[0];
-  }, [siloGrains, selectedGrainId]);
 
   return (
     <main className="page dashboard-page">
